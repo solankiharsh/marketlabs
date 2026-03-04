@@ -1,0 +1,48 @@
+{
+  "name": "marketlabs-backend",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "dev:bun": "bun run --hot src/index.ts",
+    "start": "npx prisma generate && npx prisma db push --accept-data-loss && node --loader tsx src/index.ts",
+    "build": "bun build src/index.ts --outdir dist --target bun",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint src --ext .ts",
+    "db:generate": "npx prisma generate",
+    "db:check": "npx tsx scripts/check-env.ts",
+    "db:find": "npx tsx scripts/find-postgres-user.ts",
+    "db:test": "npx tsx scripts/test-connection.ts",
+    "db:create": "npx tsx scripts/create-database.ts",
+    "db:baseline": "npx tsx scripts/baseline-migration.ts",
+    "db:push": "npx prisma db push",
+    "db:migrate": "npx prisma migrate dev",
+    "db:studio": "npx prisma studio",
+    "postinstall": "npx prisma generate || true"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.27.3",
+    "@hono/node-server": "^1.12.0",
+    "@hono/swagger-ui": "^0.5.3",
+    "@prisma/client": "^6.0.0",
+    "@privy-io/server-auth": "^1.7.0",
+    "@types/node": "^25.2.0",
+    "dotenv": "^16.4.5",
+    "hono": "^4.4.0",
+    "hono-rate-limiter": "^0.5.3",
+    "jose": "^5.6.0",
+    "openai": "^4.28.0",
+    "pg": "^8.18.0",
+    "technicalindicators": "^3.1.0",
+    "ws": "^8.18.0",
+    "zod": "^3.23.0"
+  },
+  "devDependencies": {
+    "@types/bun": "^1.1.0",
+    "@types/ws": "^8.5.10",
+    "prisma": "^6.0.0",
+    "tsx": "^4.21.0",
+    "typescript": "^5.5.0"
+  }
+}

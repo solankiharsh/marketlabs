@@ -1,0 +1,43 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  * {
+    @apply m-0 p-0 box-border border-border;
+  }
+
+  html {
+    @apply scroll-smooth;
+    background: #000000;
+  }
+
+  body {
+    @apply bg-bg-primary text-text-primary;
+    font-family: var(--font-sans), 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  h1, h2, h3, h4, h5, h6 {
+    font-family: var(--font-display), 'Orbitron', sans-serif;
+    letter-spacing: 0.02em;
+  }
+
+  h1 {
+    @apply text-hero-mobile md:text-hero font-bold text-text-primary;
+  }
+
+  h2 {
+    @apply text-section font-semibold text-text-primary;
+  }
+
+  h3 {
+    @apply text-subheading font-semibold text-text-primary;
+  }
+
+  p {
+    @apply text-body text-text-secondary;
+  }
+}
+
