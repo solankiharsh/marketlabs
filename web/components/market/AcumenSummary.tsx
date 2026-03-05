@@ -105,13 +105,18 @@ export function AcumenSummary({
               )}
             </>
           ) : score !== undefined && score !== null ? (
-            <div className={`text-lg font-bold ${
-              toNumber(score) >= 70 ? 'text-success' :
-              toNumber(score) >= 50 ? 'text-accent-primary' :
-              toNumber(score) >= 30 ? 'text-warning' : 'text-error'
-            }`}>
-              {toNumber(score)?.toFixed(0) || '—'}
-            </div>
+            (() => {
+              const s = toNumber(score) ?? 0;
+              return (
+                <div className={`text-lg font-bold ${
+                  s >= 70 ? 'text-success' :
+                  s >= 50 ? 'text-accent-primary' :
+                  s >= 30 ? 'text-warning' : 'text-error'
+                }`}>
+                  {s.toFixed(0)}
+                </div>
+              );
+            })()
           ) : null}
         </div>
       </div>

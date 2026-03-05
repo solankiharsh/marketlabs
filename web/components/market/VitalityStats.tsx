@@ -41,7 +41,7 @@ export function VitalityStats({ currentPrice, setupType = 'neutral', stats }: Vi
       <div className="flex items-center justify-between mb-6">
         <div className="flex items-center gap-2">
           <h2 className="text-2xl font-display font-bold">Vitality Stats</h2>
-          <CheckCircle2 className="w-5 h-5 text-accent-primary" title="Verified" />
+          <span title="Verified" aria-label="Verified"><CheckCircle2 className="w-5 h-5 text-accent-primary" /></span>
         </div>
         <div className={`px-4 py-2 rounded-lg border ${getSignalBg()} ${getSignalColor()}`}>
           <span className="text-sm font-semibold">{getSignalStatus()}</span>

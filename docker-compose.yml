@@ -1,0 +1,78 @@
+# Zing Docker Compose - Backend + PostgreSQL
+# Usage:
+#   1. Copy server/env.example to server/.env and edit
+#   2. docker-compose up -d
+#   3. API at http://localhost:5000
+
+version: '3.8'
+
+services:
+  # ========================
+  # PostgreSQL Database
+  # ========================
+  postgres:
+    image: postgres:16-alpine
+    container_name: zing-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-zing}
+      POSTGRES_USER: ${POSTGRES_USER:-zing}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-zing123}
+      TZ: ${TZ:-Asia/Shanghai}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./server/migrations/init.sql:/docker-entrypoint-initdb.d/01-init.sql
+    ports:
+      - "${DB_PORT:-127.0.0.1:5432}:5432"
+    networks:
+      - zing-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-zing} -d ${POSTGRES_DB:-zing}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ========================
+  # Backend API (Python/Flask)
+  # ========================
+  backend:
+    build:
+      context: ./server
+      dockerfile: Dockerfile
+    container_name: zing-backend
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - "${BACKEND_PORT:-127.0.0.1:5000}:5000"
+    volumes:
+      - backend_logs:/app/logs
+      - backend_data:/app/data
+      # Mount .env for runtime config
+      - ./server/.env:/app/.env:ro
+    environment:
+      - PYTHON_API_HOST=0.0.0.0
+      - PYTHON_API_PORT=5000
+      - TZ=${TZ:-Asia/Shanghai}
+      - DATABASE_URL=postgresql://${POSTGRES_USER:-zing}:${POSTGRES_PASSWORD:-zing123}@postgres:5432/${POSTGRES_DB:-zing}
+      - DB_TYPE=postgresql
+    networks:
+      - zing-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5000/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+volumes:
+  postgres_data:
+    driver: local
+  backend_logs:
+    driver: local
+  backend_data:
+    driver: local
+
+networks:
+  zing-network:
+    driver: bridge

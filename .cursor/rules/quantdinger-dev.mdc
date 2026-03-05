@@ -1,0 +1,39 @@
+---
+description: How to run QuantDinger backend and web together for local development
+globs: 
+alwaysApply: true
+---
+
+# QuantDinger local development
+
+## Run both backend and web (one command)
+
+From repo root:
+
+```bash
+make dev
+```
+
+- Starts **backend** (Flask) in background at http://localhost:5000
+- Starts **web** (Next.js) in foreground at http://localhost:3000
+- First run creates `server/venv` and runs `pip install -r requirements.txt` if needed
+- Ctrl+C stops the web; the backend may keep running (stop it with `pkill -f "run.py"` if needed)
+
+## Run in two terminals (alternative)
+
+- **Terminal 1:** `make dev-backend` (backend uses `server/venv/bin/python` if venv exists)
+- **Terminal 2:** `make dev-web`
+
+## Prerequisites
+
+- **Backend:** Python 3.10+, venv with deps. If you see `ModuleNotFoundError: No module named 'flask'`, run:
+  ```bash
+  cd server && python3 -m venv venv && ./venv/bin/pip install -r requirements.txt
+  ```
+- **Backend env:** `server/.env` with at least `DATABASE_URL` (PostgreSQL) and `SECRET_KEY`. Copy from `server/env.example` via `make setup`.
+- **Web:** Node 18+. First time run `cd web && npm install`.
+
+## Project layout
+
+- `server/` — Flask API (port 5000)
+- `web/` — Next.js app (port 3000), proxies `/api/*` to backend via `NEXT_PUBLIC_API_URL` (default localhost:5000)
