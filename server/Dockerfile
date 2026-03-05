@@ -32,13 +32,13 @@ COPY . .
 # Create log and data directories
 RUN mkdir -p logs data/memory
 
-# Expose port
+# Expose port (Railway sets PORT at runtime; app binds to 0.0.0.0:$PORT)
 EXPOSE 5000
 
-# Environment variables
+# Environment variables (do not set PORT here; Railway injects it)
 ENV PYTHONUNBUFFERED=1
 ENV PYTHON_API_HOST=0.0.0.0
-ENV PYTHON_API_PORT=5000
 
-# Start command
-CMD ["python", "run.py"]
+# Production: gunicorn binds to 0.0.0.0:$PORT so Railway's proxy can reach the app.
+# Using run.py alone can cause 502/TCP abort if PORT or binding is wrong.
+CMD ["gunicorn", "-c", "gunicorn_config.py", "run:app"]

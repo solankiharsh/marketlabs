@@ -79,7 +79,7 @@ def get_security_config():
         config = get_security_service().get_security_config()
         return jsonify({'code': 1, 'msg': 'success', 'data': config})
     except Exception as e:
-        logger.error(f"get_security_config error: {e}")
+        logger.exception("get_security_config error (check Deploy Logs for traceback): %s", e)
         return jsonify({'code': 0, 'msg': str(e), 'data': None}), 500
 
 
@@ -225,8 +225,8 @@ def login():
         })
             
     except Exception as e:
-        logger.error(f"Login error: {e}")
-        return jsonify({'code': 500, 'msg': str(e), 'data': None}), 500
+        logger.exception("Login error (check Deploy Logs for traceback): %s", e)
+        return jsonify({'code': 500, 'msg': 'Login failed. Try again or check backend Deploy Logs.', 'data': None}), 500
 
 
 # =============================================================================

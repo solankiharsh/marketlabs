@@ -82,10 +82,11 @@ After that, Railpack will detect Python in `server/` and Node in `web/` and buil
      No trailing slash.
 3. **Deploy:** Deploy the service. Frontend will be at `https://<frontend-service>.up.railway.app`.
 
-### If you get 502 on the backend ("Application failed to respond")
+### If you get 502 on the backend ("Application failed to respond") or TCP abort / HTTP 000
 
-- **Backend must listen on Railway's PORT:** Railway sets the `PORT` env var. The backend reads `PORT` first (then `PYTHON_API_PORT`, then 5000), so both `python run.py` and `gunicorn -c gunicorn_config.py run:app` listen on the correct port. Redeploy after pulling the latest code.
-- **Prefer Gunicorn:** Use start command `gunicorn -c gunicorn_config.py run:app` for production.
+- **Use Gunicorn:** The repo **Dockerfile** now runs `gunicorn -c gunicorn_config.py run:app` so the app binds to `0.0.0.0:$PORT`. If you override the start command, use the same. Do **not** run only `python run.py` in production on Railway.
+- **Backend must listen on Railway's PORT:** Railway injects `PORT` (e.g. 5000). The app must bind to that port. In **Settings → Networking**, the **Port** shown for the backend (e.g. 5000) is where the proxy sends traffic; the app reads `PORT` and listens there. Do not set `PORT` in Variables (let Railway set it).
+- **If health returns 502 or curl gives 000 / TCP abort:** The container may be crashing on startup (check **Deploy Logs** for tracebacks) or the proxy port may not match. Ensure no custom start command overrides the Dockerfile CMD, and that **Root Directory** is `server`. Redeploy after pulling the latest code.
 
 ### If you get 502 Bad Gateway on the web (build succeeds, app shows "Ready")
 
@@ -114,6 +115,41 @@ If the server already started before `DATABASE_URL` was set (so it never created
    ./venv/bin/python migrations/seed_admin.py
    ```
 3. Log in with **ADMIN_USER** / **ADMIN_PASSWORD**.
+
+### No HTTP Logs / only Deploy Logs / debugging 500s
+
+- **After setting custom ports** (e.g. backend 5000, frontend 3000), if you see **500** on login or `/api/auth/security-config` in the frontend HTTP logs, the backend is returning the error. Check **backend** (zestful-laughter) → **Deploy Logs** at the time of the request for the Python traceback.
+- **HTTP Logs** on Railway are filled from their edge when requests hit the service’s **public URL**. If traffic goes through your **frontend** (browser → web app → proxy to backend), the backend service may show **“No logs in this time range”** under HTTP Logs even though requests and 500s are reaching it. That’s expected in a frontend-proxy setup.
+- **Deploy Logs** = your app’s stdout/stderr (gunicorn + Flask). All requests and errors show up here. **Use Deploy Logs to debug 500s.**
+- **What to do:** Reproduce the 500 (e.g. try login), then open the **backend** service → **Deploy Logs**, and look at the **time when you clicked Login**. You should see:
+  - A line like `POST /api/auth/login 500` (gunicorn access log when `accesslog = "-"`),
+  - And a **traceback** right after it (e.g. `Login error (check Deploy Logs for traceback): ...`). That traceback is the real cause (e.g. DB error, missing env, missing table).
+- If you don’t see any line when you submit the form, the request may not be reaching this backend (check frontend proxy URL and CORS).
+
+---
+
+### "Failed to proxy ... ECONNRESET" / "socket hang up"
+
+This means the **backend** closed the connection or didn't respond in time. The frontend proxy is fine; the backend at `NEXT_PUBLIC_API_URL` is the problem.
+
+**How to see the cause:**
+
+1. **Test the backend directly** (bypass the frontend):
+   ```bash
+   BACKEND="https://zestful-laughter-production.up.railway.app"  # or your backend URL
+   curl -s -o /dev/null -w "%{http_code}\n" -m 25 "$BACKEND/api/health"
+   curl -s -w "\nHTTP_CODE:%{http_code}\n" -m 25 -X POST "$BACKEND/api/auth/login" \
+     -H "Content-Type: application/json" -d '{"username":"admin","password":"test"}'
+   ```
+   - **Time out / fail:** Backend down or very slow (cold start, DB). Check Railway → backend **Active**, **Deploy Logs** at startup.
+   - **Health 200, login times out:** Login or DB slow/failing → check **Deploy Logs** when you run curl.
+   - **Login returns 500:** See "No HTTP Logs / debugging 500s" above; check Deploy Logs for traceback.
+
+2. **Check backend Deploy Logs** (backend service → Deploy → View Logs) at the time you click Login or run curl:
+   - Look for `POST /api/auth/login`, tracebacks, `ERROR`, or `timeout` / `connection ... failed`.
+   - If **no log line** when you hit login: request not reaching backend (wrong URL, backend sleeping/crashed).
+
+3. **Typical fixes:** Cold start → health-check or keep-warm; same region for DB and backend. Crash → fix error in Deploy Logs. Not listening → use gunicorn and bind to `0.0.0.0:$PORT`.
 
 ---
 
