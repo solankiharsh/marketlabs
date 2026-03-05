@@ -9,8 +9,12 @@ _port = int(os.environ.get("PORT", 5000))
 bind = f"0.0.0.0:{_port}"
 backlog = 2048
 
-# Worker processes
-workers = multiprocessing.cpu_count() * 2 + 1
+# Worker processes (set WEB_CONCURRENCY=1 or 2 on Railway for faster startup and to avoid OOM)
+_web_concurrency = os.environ.get("WEB_CONCURRENCY")
+if _web_concurrency not in (None, ""):
+    workers = max(1, int(_web_concurrency))
+else:
+    workers = min(multiprocessing.cpu_count() * 2 + 1, 4)
 worker_class = "sync"
 worker_connections = 1000
 timeout = 600  # 10 minutes for long-running backtests (in seconds)

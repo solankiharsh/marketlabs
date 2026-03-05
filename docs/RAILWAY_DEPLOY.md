@@ -86,7 +86,15 @@ After that, Railpack will detect Python in `server/` and Node in `web/` and buil
 
 - **Use Gunicorn:** The repo **Dockerfile** now runs `gunicorn -c gunicorn_config.py run:app` so the app binds to `0.0.0.0:$PORT`. If you override the start command, use the same. Do **not** run only `python run.py` in production on Railway.
 - **Backend must listen on Railway's PORT:** Railway injects `PORT` (e.g. 5000). The app must bind to that port. In **Settings → Networking**, the **Port** shown for the backend (e.g. 5000) is where the proxy sends traffic; the app reads `PORT` and listens there. Do not set `PORT` in Variables (let Railway set it).
-- **If health returns 502 or curl gives 000 / TCP abort:** (1) The repo uses **`server/railway.toml`** to force **DOCKERFILE** builder so the Dockerfile CMD (gunicorn) is used and the app binds to `PORT`. Do not change the builder to Nixpacks unless you set the same start command and port behavior. (2) DB init runs in a background thread so the app can respond to `/api/health` before Postgres is ready; if the container was blocking on DB, redeploy after pulling. (3) Check **Deploy Logs** for tracebacks. **Root Directory** must be `server`.
+- **If health returns 502 or curl gives 000 / TCP abort:** (1) The repo uses **`server/railway.toml`** to force **DOCKERFILE** builder so the Dockerfile CMD (gunicorn) is used and the app binds to `PORT`. Do not change the builder to Nixpacks unless you set the same start command and port behavior. (2) DB init and other startup hooks run in background threads so the app can respond to `/api/health` before Postgres is ready. (3) Set **`WEB_CONCURRENCY=1`** in the backend service Variables so only one worker starts (faster boot, fewer timeouts). (4) Check **Deploy Logs** for tracebacks. **Root Directory** must be `server`.
+
+### Healthcheck fails with "service unavailable" or "replicas never became healthy"
+
+The backend must respond to `GET /api/health` within the healthcheck window (e.g. 2 minutes). If startup blocks on the database or too many workers, the check fails.
+
+- **Set `WEB_CONCURRENCY=1`** in the backend **Variables**. This starts a single Gunicorn worker so the app binds and responds quickly.
+- **Optional:** Set **`DISABLE_RESTORE_RUNNING_STRATEGIES=true`** to skip restoring strategies on startup (fewer DB calls, faster boot).
+- The app defers DB init and startup hooks to background threads so `/api/health` can return before Postgres is ready. If you still see failures, check **Deploy Logs** for Python tracebacks or connection timeouts.
 
 ### Frontend shows 8080 in Deploy Logs but Settings shows Port 3000
 
@@ -263,6 +271,8 @@ Set these in each service’s **Variables** so the app and proxy match. Replace 
 | **Backend** | `JWT_SECRET` or `SECRET_KEY` | 32+ character random string |
 | **Backend** | `DATABASE_URL` | From Railway Postgres or your DB. Optional: add `?connection_limit=5` to the URL if your provider limits connections. |
 | **Backend** | `DB_POOL_MAX_CONNECTIONS` | Optional. Default `10`. Limits psycopg2 pool size to avoid exhaustion (e.g. on Railway). |
+| **Backend** | `WEB_CONCURRENCY` | Optional. Gunicorn worker count. Set to `1` or `2` on Railway so the app binds quickly and healthchecks pass (default caps at 4). |
+| **Backend** | `DISABLE_RESTORE_RUNNING_STRATEGIES` | Optional. Set to `true` to skip restoring strategies on startup (faster boot, fewer DB calls). |
 | **Frontend** (e.g. marketlabs) | `NEXT_PUBLIC_API_URL` | Backend public URL, e.g. `https://zestful-laughter-production.up.railway.app` (no trailing slash) |
 
 **Critical:** If `NEXT_PUBLIC_API_URL` is not set on the frontend service, the app may call `http://localhost:5000` from the server or browser and fail in production. Set it in the **Frontend** service Variables and redeploy so it’s baked into the build.

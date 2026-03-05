@@ -4,6 +4,7 @@ Zing Python API - Flask application factory.
 from flask import Flask
 from flask_cors import CORS
 import logging
+import threading
 import traceback
 
 from app.utils.logger import setup_logger, get_logger
@@ -221,7 +222,6 @@ def create_app(config_name='default'):
             get_user_service().ensure_admin_exists()
         except Exception as e:
             logger.warning("Database initialization note: %s", e)
-    import threading
     _db_thread = threading.Thread(target=_init_db_and_admin, daemon=True)
     _db_thread.start()
 
@@ -294,14 +294,20 @@ def create_app(config_name='default'):
     
     from app.routes import register_routes
     register_routes(app)
-    
-    # Startup hooks.
-    with app.app_context():
-        start_pending_order_worker()
-        start_portfolio_monitor()
-        start_usdt_order_worker()
-        start_polymarket_worker()
-        restore_running_strategies()
-    
+
+    # Run DB-dependent startup hooks in a background thread so create_app() returns quickly.
+    # This allows the server to bind and respond to /api/health before DB/workers are ready
+    # (fixes Railway healthcheck "service unavailable" when Postgres is slow or cold).
+    def _run_startup_hooks():
+        with app.app_context():
+            start_pending_order_worker()
+            start_portfolio_monitor()
+            start_usdt_order_worker()
+            start_polymarket_worker()
+            restore_running_strategies()
+
+    _startup_thread = threading.Thread(target=_run_startup_hooks, daemon=True)
+    _startup_thread.start()
+
     return app
 
