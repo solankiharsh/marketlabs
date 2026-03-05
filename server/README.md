@@ -73,7 +73,7 @@ This will:
 
 ### Prerequisites
 
-- Python 3.10+ recommended
+- Python 3.10–3.13 recommended (3.14 not fully supported by some deps, e.g. `bip-utils` for USDT)
 - PostgreSQL 14+ installed and running
 
 ### 1) Setup PostgreSQL
@@ -95,6 +95,8 @@ psql -U zing -d zing -f migrations/init.sql
 ```bash
 cd server
 pip install -r requirements.txt
+# Optional: USDT TRC20 / HD wallet support (requires Python 3.10–3.13)
+# pip install -r requirements-usdt.txt
 ```
 
 ### 3) Create your local `.env`
@@ -205,6 +207,7 @@ gunicorn -c gunicorn_config.py "run:app"
 
 ## Troubleshooting
 
+- **502 on POST /api/auth/login**: The Next.js app proxies `/api/*` to the backend. A 502 (often with ~1–60 ms) usually means the **Flask backend is not running** on port 5000. Start it from repo root with `make dev` (backend + web) or `make dev-backend` (backend only), or from `server/` with `python run.py`.
 - **Database connection failed**: Check `DATABASE_URL` format and PostgreSQL service status
 - **Outbound requests fail**: Configure `PROXY_PORT` or `PROXY_URL` in `.env`
 - **Disable auto-restore**: Set `DISABLE_RESTORE_RUNNING_STRATEGIES=true`

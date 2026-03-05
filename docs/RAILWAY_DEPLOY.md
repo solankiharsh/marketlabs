@@ -82,11 +82,38 @@ After that, Railpack will detect Python in `server/` and Node in `web/` and buil
      No trailing slash.
 3. **Deploy:** Deploy the service. Frontend will be at `https://<frontend-service>.up.railway.app`.
 
-### If you get 502 Bad Gateway (build succeeds, app shows "Ready")
+### If you get 502 on the backend ("Application failed to respond")
+
+- **Backend must listen on Railway's PORT:** Railway sets the `PORT` env var. The backend reads `PORT` first (then `PYTHON_API_PORT`, then 5000), so both `python run.py` and `gunicorn -c gunicorn_config.py run:app` listen on the correct port. Redeploy after pulling the latest code.
+- **Prefer Gunicorn:** Use start command `gunicorn -c gunicorn_config.py run:app` for production.
+
+### If you get 502 Bad Gateway on the web (build succeeds, app shows "Ready")
 
 - **Check target port:** In the **web** service go to **Settings → Networking → Public Networking**. Ensure the **port** your domain forwards to matches the port the app listens on. Railway usually sets `PORT` (e.g. 8080); the app uses it. If "Port" or "Target port" is wrong (e.g. 3000 while the app listens on 8080), change it to match `PORT` or **Generate Domain** again so it picks the right port.
 - **Bind to all interfaces:** The web app’s `npm start` runs `next start -H 0.0.0.0` so it listens on `0.0.0.0` (required for Railway’s proxy to reach it). If you use a custom start command, keep `-H 0.0.0.0`.
 - **Build-time env for Next.js:** Set `NEXT_PUBLIC_API_URL` in the service **Variables** (so it’s present at build). Redeploy after changing it.
+
+### Can't log in / `qd_users` table is empty
+
+If the database has tables but **no users** (e.g. you see "This table is empty" for `qd_users` in Railway Postgres → Data), the app has no account to log in with.
+
+**Option A — Redeploy so the server creates an admin (recommended)**  
+1. In the **backend** service **Variables**, set **ADMIN_USER** and **ADMIN_PASSWORD** (and optionally **ADMIN_EMAIL**).  
+2. **Redeploy** the backend. On startup the app runs `ensure_admin_exists()` and, if `qd_users` is empty, creates one admin with those credentials.  
+3. Log in with **ADMIN_USER** / **ADMIN_PASSWORD**.
+
+**Option B — Seed an admin from your machine**  
+If the server already started before `DATABASE_URL` was set (so it never created an admin), you can seed one manually:
+
+1. From the **Postgres** service in Railway, copy the **public** connection URL (Variables → `DATABASE_PUBLIC_URL` or the URL that contains `proxy.rlwy.net`). Do **not** use the internal URL (`postgres.railway.internal`) from your laptop.  
+2. From the `server` directory on your machine:
+   ```bash
+   export DATABASE_URL='postgresql://...'   # paste the public URL
+   export ADMIN_USER=admin
+   export ADMIN_PASSWORD=your_secure_password
+   ./venv/bin/python migrations/seed_admin.py
+   ```
+3. Log in with **ADMIN_USER** / **ADMIN_PASSWORD**.
 
 ---
 

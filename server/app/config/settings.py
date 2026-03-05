@@ -13,7 +13,8 @@ class MetaConfig(type):
 
     @property
     def PORT(cls):
-        return int(os.getenv('PYTHON_API_PORT', 5000))
+        # Railway, Heroku, etc. set PORT; use it when present so the proxy can reach the app
+        return int(os.getenv('PORT') or os.getenv('PYTHON_API_PORT', 5000))
 
     @property
     def DEBUG(cls):
