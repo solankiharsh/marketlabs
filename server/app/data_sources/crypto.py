@@ -15,6 +15,14 @@ from app.utils.logger import get_logger
 
 logger = get_logger(__name__)
 
+# One-time log for Binance (or other) geo-restriction (HTTP 451) to avoid log spam
+_geo_restriction_logged = False
+
+def _is_geo_restriction_error(exc: Exception) -> bool:
+    """True if the error is HTTP 451 / exchange unavailable from this region."""
+    msg = (str(exc) or "").lower()
+    return "451" in msg or "restricted location" in msg or "service unavailable from a restricted" in msg
+
 # Common quote currencies (priority order)
 _COMMON_QUOTES = ['USDT', 'USD', 'BTC', 'ETH', 'BUSD', 'USDC', 'BNB', 'EUR', 'GBP']
 
@@ -69,7 +77,17 @@ class CryptoDataSource(BaseDataSource):
             self._markets_loaded = True
             return True
         except Exception as e:
-            logger.debug("Failed to load markets for %s: %s", getattr(self.exchange, 'id', ''), e)
+            global _geo_restriction_logged
+            if _is_geo_restriction_error(e):
+                if not _geo_restriction_logged:
+                    _geo_restriction_logged = True
+                    logger.info(
+                        "Exchange %s is unavailable from this region (geo-restriction). "
+                        "Set CCXT_DEFAULT_EXCHANGE=coinbase (or kraken, etc.) in your env for crypto data.",
+                        getattr(self.exchange, 'id', ''),
+                    )
+            else:
+                logger.debug("Failed to load markets for %s: %s", getattr(self.exchange, 'id', ''), e)
             return False
     
     def _normalize_symbol(self, symbol: str) -> Tuple[str, str]:
@@ -231,11 +249,14 @@ class CryptoDataSource(BaseDataSource):
                         except Exception as e2:
                             logger.debug(f"Alternative symbol {valid_symbol} also failed: {e2}")
             
-            # All attempts failed; log and return default
-            logger.warning(
-                f"Symbol '{symbol}' (normalized: {normalized}) not found on {self.exchange.id}. "
-                f"Error: {str(e)[:100]}"
-            )
+            # All attempts failed; log and return default (avoid spam for geo-restriction)
+            if _is_geo_restriction_error(e):
+                logger.debug("Symbol %s unavailable on %s (geo-restricted): %s", symbol, self.exchange.id, str(e)[:80])
+            else:
+                logger.warning(
+                    f"Symbol '{symbol}' (normalized: {normalized}) not found on {self.exchange.id}. "
+                    f"Error: {str(e)[:100]}"
+                )
         
         return {'last': 0, 'symbol': symbol}
     
@@ -354,7 +375,10 @@ class CryptoDataSource(BaseDataSource):
             return ohlcv
             
         except Exception as e:
-            logger.warning(f"CCXT fetch_ohlcv failed: {str(e)}; trying fallback")
+            if _is_geo_restriction_error(e):
+                logger.debug("CCXT fetch_ohlcv failed (geo-restriction); trying fallback")
+            else:
+                logger.warning(f"CCXT fetch_ohlcv failed: {str(e)}; trying fallback")
             return self._fetch_ohlcv_fallback(symbol_pair, ccxt_timeframe, limit, before_time, timeframe)
     
     def _fetch_ohlcv_fallback(
@@ -380,6 +404,9 @@ class CryptoDataSource(BaseDataSource):
             # logger.info(f"CCXT fallback returned {len(ohlcv) if ohlcv else 0} bars")
             return ohlcv
         except Exception as e:
-            logger.error(f"CCXT fallback method also failed: {str(e)}")
+            if _is_geo_restriction_error(e):
+                logger.debug("CCXT fallback also failed (geo-restriction): %s", str(e)[:80])
+            else:
+                logger.error(f"CCXT fallback method also failed: {str(e)}")
             return []
 

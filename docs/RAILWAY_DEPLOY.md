@@ -170,6 +170,23 @@ This means the **backend** closed the connection or didn't respond in time. The 
 
 ---
 
+### Binance / crypto "451" or "Service unavailable from a restricted location"
+
+If Deploy Logs show many lines like:
+
+- `Symbol 'BTC/USDT' not found on binance. Error: binance GET ... 451`
+- `"Service unavailable from a restricted location according to 'b. Eligibility'..."`
+
+**Cause:** Binance blocks API access from some regions (e.g. US, or the region where Railway runs). HTTP 451 = "Unavailable For Legal Reasons." The app defaults to Binance for crypto data; from a restricted server IP, Binance refuses the request.
+
+**Fix:** Use an exchange that allows your deployment region. In the **backend** service **Variables**, set:
+
+- **`CCXT_DEFAULT_EXCHANGE=coinbase`** (or `kraken`, `kucoin`, etc.)
+
+Redeploy. Crypto prices and K-lines will then be fetched from that exchange instead of Binance. The app also logs a one-time INFO message when it detects geo-restriction; per-symbol failures are logged at DEBUG to avoid log spam.
+
+---
+
 ## Environment variables reference
 
 ### Web (frontend) service
@@ -273,6 +290,7 @@ Set these in each service’s **Variables** so the app and proxy match. Replace 
 | **Backend** | `DB_POOL_MAX_CONNECTIONS` | Optional. Default `10`. Limits psycopg2 pool size to avoid exhaustion (e.g. on Railway). |
 | **Backend** | `WEB_CONCURRENCY` | Optional. Gunicorn worker count. Set to `1` or `2` on Railway so the app binds quickly and healthchecks pass (default caps at 4). |
 | **Backend** | `DISABLE_RESTORE_RUNNING_STRATEGIES` | Optional. Set to `true` to skip restoring strategies on startup (faster boot, fewer DB calls). |
+| **Backend** | `CCXT_DEFAULT_EXCHANGE` | Optional. Default `binance`. Use `coinbase` (or `kraken`, etc.) if Binance returns 451 / "restricted location" from Railway. |
 | **Frontend** (e.g. marketlabs) | `NEXT_PUBLIC_API_URL` | Backend public URL, e.g. `https://zestful-laughter-production.up.railway.app` (no trailing slash) |
 
 **Critical:** If `NEXT_PUBLIC_API_URL` is not set on the frontend service, the app may call `http://localhost:5000` from the server or browser and fail in production. Set it in the **Frontend** service Variables and redeploy so it’s baked into the build.

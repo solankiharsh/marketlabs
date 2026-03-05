@@ -13,6 +13,16 @@ from app.utils.db import get_db_connection, is_postgres_available
 logger = get_logger(__name__)
 
 
+def _safe_float(val: Any, default: float = 0.0) -> float:
+    """Parse a value to float without raising; use default on failure."""
+    if val is None:
+        return default
+    try:
+        return float(val)
+    except (TypeError, ValueError):
+        return default
+
+
 class PolymarketDataSource:
     """Polymarket prediction market data source."""
 
@@ -412,14 +422,17 @@ Search for related prediction markets. Prefer API for fresh data; DB is optional
         Fetch market data from Polymarket Gamma API (/events endpoint).
         """
         try:
-            # Use Gamma /events endpoint (recommended)
+            # Use Gamma /events endpoint (recommended). Parser returns all markets; we filter by category here.
             markets = self._fetch_from_gamma_api(category, limit)
+            if markets and category:
+                markets = [m for m in markets if (m.get("category") or "").lower() == category.lower()]
             if markets:
                 # Sort by volume_24h desc (API has no order param)
                 markets.sort(key=lambda x: x.get('volume_24h', 0), reverse=True)
                 return markets[:limit]
             
-            logger.warning(f"Gamma API failed to fetch markets for category '{category}' (API down, network, rate limit, or empty)")
+            if not markets:
+                logger.warning(f"Gamma API failed to fetch markets for category '{category}' (API down, network, rate limit, or empty)")
             return []
             
         except Exception as e:
@@ -457,9 +470,10 @@ Search for related prediction markets. Prefer API for fresh data; DB is optional
                     logger.debug(f"Gamma API returned data type: {type(data)}, keys: {list(data.keys()) if isinstance(data, dict) else 'list'}")
                     
                     # Response may be list or { data: [...] }
+                    # Parse all events without category filter; caller filters by category
                     if isinstance(data, list):
                         logger.info(f"Gamma API returned list with {len(data)} items")
-                        markets = self._parse_gamma_events(data, category)
+                        markets = self._parse_gamma_events(data, category_filter=None)
                         logger.info(f"Parsed {len(markets)} markets from Gamma API")
                         return markets
                     elif isinstance(data, dict):
@@ -467,13 +481,13 @@ Search for related prediction markets. Prefer API for fresh data; DB is optional
                         if "data" in data:
                             events_list = data["data"]
                             logger.info(f"Gamma API returned dict with 'data' field containing {len(events_list) if isinstance(events_list, list) else 'non-list'} items")
-                            markets = self._parse_gamma_events(events_list, category)
+                            markets = self._parse_gamma_events(events_list, category_filter=None)
                             logger.info(f"Parsed {len(markets)} markets from Gamma API")
                             return markets
                         # Or raw event objects
                         elif "id" in data or "slug" in data:
                             logger.info("Gamma API returned single event object")
-                            markets = self._parse_gamma_events([data], category)
+                            markets = self._parse_gamma_events([data], category_filter=None)
                             logger.info(f"Parsed {len(markets)} markets from Gamma API")
                             return markets
                         else:
@@ -505,20 +519,17 @@ Search for related prediction markets. Prefer API for fresh data; DB is optional
             logger.warning("Gamma API request timeout after 15s (network or slow API).")
             return []
         except requests.exceptions.ConnectionError as ce:
-            logger.warning(f"Gamma API connection error: {ce} (可能原因: 网络连接问题或Polymarket API不可达)")
+            logger.warning(f"Gamma API connection error: {ce} (possible cause: network or Polymarket API unreachable)")
             return []
         except Exception as e:
-            logger.warning(f"Gamma API failed: {e} (可能原因: API格式变更、网络问题或服务异常)")
+            logger.warning(f"Gamma API failed: {e} (possible cause: API change, network, or service error)")
             return []
     
     def _parse_gamma_events(self, events_data: List[Dict], category_filter: str = None) -> List[Dict]:
         """
-        解析Gamma API返回的事件数据
-        Gamma API的/events端点返回事件对象，每个事件包含关联的市场数据
-        
-        根据官方文档，事件对象结构：
-        - event对象包含markets数组
-        - 每个market包含clobTokenIds、outcomePrices等字段
+        Parse event data returned by the Gamma API.
+        The /events endpoint returns event objects; each event contains associated market data.
+        Per docs: event has a markets array; each market has clobTokenIds, outcomePrices, etc.
         """
         parsed = []
         if not events_data:
@@ -527,7 +538,7 @@ Search for related prediction markets. Prefer API for fresh data; DB is optional
             
         logger.info(f"Parsing {len(events_data)} events from Gamma API")
         
-        # 记录第一个事件的键，用于调试
+        # Log first event keys for debugging
         if events_data:
             first_event_keys = list(events_data[0].keys())[:10]
             logger.info(f"First event keys: {first_event_keys}")
@@ -535,216 +546,187 @@ Search for related prediction markets. Prefer API for fresh data; DB is optional
         
         for idx, event in enumerate(events_data):
             try:
-                # Gamma API的事件对象结构
-                # 事件可能有多个市场（markets字段），或者直接包含市场信息
+                # Gamma API event structure: event may have multiple markets or be market data itself
                 markets = event.get("markets", [])
                 
-                # 如果事件没有markets字段，可能事件本身就是市场数据
                 if not markets:
-                    # 检查是否直接是市场对象（有question或title字段）
+                    # Check if event is directly a market (has question/title)
                     if "question" in event or "title" in event or "slug" in event:
                         markets = [event]
                     else:
-                        if idx < 3:  # 只记录前3个的详细信息
+                        if idx < 3:
                             logger.debug(f"Event {idx} has no markets and doesn't look like a market. Keys: {list(event.keys())[:10]}")
                         continue
                 
-                if idx < 3:  # 只记录前3个的详细信息
+                if idx < 3:
                     logger.debug(f"Processing event {idx} with {len(markets)} markets")
                 
                 for market_idx, market in enumerate(markets):
-                    # 提取市场基本信息
-                    market_id = market.get("id") or market.get("slug") or event.get("id") or event.get("slug", "")
-                    question = market.get("question") or event.get("question") or market.get("title") or event.get("title", "")
-                    
-                    if idx < 3 and market_idx < 2:  # 记录前几个市场的详细信息
-                        logger.info(f"Event {idx}, Market {market_idx}: id={market_id}, question={question[:50] if question else 'None'}, event_slug={event.get('slug')}, market_slug={market.get('slug')}, keys={list(market.keys())[:10]}")
-                    
-                    if not question:
-                        if idx < 3:
-                            logger.warning(f"Event {idx}, Market {market_idx}: No question found, skipping. Market keys: {list(market.keys())[:10]}")
-                        continue
-                    
-                    # 推断类别
-                    inferred_category = self._infer_category(question)
-                    
-                    # 如果指定了类别筛选，进行过滤
-                    if category_filter and inferred_category != category_filter:
-                        continue
-                    
-                    # 获取概率和outcome数据
-                    current_probability = 50.0
-                    outcome_tokens = {}
-                    
-                    # 方法1: 从CLOB API获取实时价格（最准确）
                     try:
-                        condition_id = market.get("conditionId") or event.get("conditionId")
-                        if condition_id:
-                            prices = self._get_market_prices_from_clob(condition_id)
-                            if prices:
-                                yes_price = prices.get("YES", 0)
-                                no_price = prices.get("NO", 0)
-                                if yes_price > 0:
-                                    current_probability = yes_price * 100 if yes_price <= 1 else yes_price
-                                    outcome_tokens["YES"] = {"price": yes_price if yes_price <= 1 else yes_price / 100, "volume": 0}
-                                if no_price > 0:
-                                    outcome_tokens["NO"] = {"price": no_price if no_price <= 1 else no_price / 100, "volume": 0}
-                    except Exception as e:
-                        logger.debug(f"Failed to get prices from CLOB API: {e}")
-                    
-                    # 方法2: 处理outcomePrices字段（可能是JSON字符串）
-                    if current_probability == 50.0:
-                        outcome_prices_str = market.get("outcomePrices") or event.get("outcomePrices")
-                        if outcome_prices_str:
-                            try:
-                                if isinstance(outcome_prices_str, str):
-                                    outcome_prices = json.loads(outcome_prices_str)
-                                else:
-                                    outcome_prices = outcome_prices_str
-                                
-                                # outcomePrices通常是["0.65", "0.35"]格式，对应YES和NO
-                                if isinstance(outcome_prices, list) and len(outcome_prices) >= 2:
-                                    yes_price = float(outcome_prices[0]) if outcome_prices[0] else 0
-                                    no_price = float(outcome_prices[1]) if outcome_prices[1] else 0
-                                    current_probability = yes_price * 100 if yes_price <= 1 else yes_price
-                                    outcome_tokens["YES"] = {"price": yes_price if yes_price <= 1 else yes_price / 100, "volume": 0}
-                                    outcome_tokens["NO"] = {"price": no_price if no_price <= 1 else no_price / 100, "volume": 0}
-                            except Exception as e:
-                                logger.debug(f"Failed to parse outcomePrices: {e}")
-                    
-                    # 从market或event中获取outcomes
-                    # outcomes可能是对象数组、字符串数组，或者需要从其他字段解析
-                    outcomes = market.get("outcomes") or market.get("tokens") or event.get("outcomes") or []
-                    
-                    # 处理outcomes数组（可能是对象或字符串）
-                    for outcome in outcomes:
-                        try:
-                            # 如果outcome是字符串，跳过或尝试解析
-                            if isinstance(outcome, str):
-                                # 可能是简单的字符串标识，如"YES"或"NO"
-                                outcome_upper = outcome.upper()
-                                if "YES" in outcome_upper:
-                                    if "YES" not in outcome_tokens:
-                                        outcome_tokens["YES"] = {"price": 0.5, "volume": 0}
-                                elif "NO" in outcome_upper:
-                                    if "NO" not in outcome_tokens:
-                                        outcome_tokens["NO"] = {"price": 0.5, "volume": 0}
-                                continue
-                            
-                            # outcome是对象
-                            if not isinstance(outcome, dict):
-                                continue
-                                
-                            title = str(outcome.get("title") or outcome.get("name", "")).upper()
-                            # 获取价格（可能是price、probability或currentPrice）
-                            price = float(outcome.get("price") or outcome.get("probability") or outcome.get("currentPrice") or 0)
-                            
-                            if "YES" in title or title == "YES" or outcome.get("outcome") == "Yes":
-                                current_probability = price * 100 if price <= 1 else price
-                                outcome_tokens["YES"] = {
-                                    "price": price if price <= 1 else price / 100,
-                                    "volume": float(outcome.get("volume", outcome.get("volume24hr", 0)) or 0)
-                                }
-                            elif "NO" in title or title == "NO" or outcome.get("outcome") == "No":
-                                outcome_tokens["NO"] = {
-                                    "price": price if price <= 1 else price / 100,
-                                    "volume": float(outcome.get("volume", outcome.get("volume24hr", 0)) or 0)
-                                }
-                        except Exception as e:
-                            logger.debug(f"Failed to parse outcome: {e}")
+                        # Extract basic market info
+                        market_id = market.get("id") or market.get("slug") or event.get("id") or event.get("slug", "")
+                        question = market.get("question") or event.get("question") or market.get("title") or event.get("title", "")
+                        
+                        if idx < 3 and market_idx < 2:
+                            logger.info(f"Event {idx}, Market {market_idx}: id={market_id}, question={question[:50] if question else 'None'}, event_slug={event.get('slug')}, market_slug={market.get('slug')}, keys={list(market.keys())[:10]}")
+                        
+                        if not question:
+                            if idx < 3:
+                                logger.warning(f"Event {idx}, Market {market_idx}: No question found, skipping. Market keys: {list(market.keys())[:10]}")
                             continue
-                    
-                    # 如果没有找到outcomes，尝试从其他字段获取概率
-                    if current_probability == 50.0:
-                        # 尝试从market的probability字段获取
-                        prob = market.get("probability") or market.get("yesProbability") or event.get("probability")
-                        if prob:
-                            current_probability = float(prob) * 100 if float(prob) <= 1 else float(prob)
-                    
-                    # 获取交易量和流动性
-                    volume_24h = float(
-                        market.get("volume_24hr") or 
-                        market.get("volume24hr") or 
-                        market.get("volume_24h") or 
-                        event.get("volume_24hr") or 
-                        event.get("volume24hr") or 
-                        0
-                    )
-                    
-                    liquidity = float(
-                        market.get("liquidity") or 
-                        market.get("totalLiquidity") or 
-                        event.get("liquidity") or 
-                        0
-                    )
-                    
-                    # 解析结束日期
-                    end_date_iso = None
-                    end_date = market.get("endDate") or market.get("end_date") or event.get("endDate") or event.get("end_date")
-                    if end_date:
+                        
+                        # Infer category (caller filters by category after parsing)
+                        inferred_category = self._infer_category(question)
+                        
+                        # Get probability and outcome data
+                        current_probability = 50.0
+                        outcome_tokens = {}
+                        
+                        # Method 1: get live price from CLOB API (most accurate)
                         try:
-                            if isinstance(end_date, (int, float)):
-                                end_date_iso = datetime.fromtimestamp(end_date).isoformat() + "Z"
-                            elif isinstance(end_date, str):
-                                # 尝试解析ISO格式字符串
-                                end_date_iso = end_date
-                        except:
-                            pass
-                    
-                    # 获取slug用于构建URL
-                    # 根据Polymarket API文档：slug应该直接从API返回的数据中获取
-                    # URL格式: https://polymarket.com/event/{slug}
-                    # slug是字符串标识符，不是数字ID
-                    slug = None
-                    
-                    # 优先从event获取slug（因为event包含markets）
-                    if event.get("slug"):
-                        slug_str = str(event.get("slug", "")).strip()
-                        # 如果slug不是纯数字，且包含字母或连字符，则是有效slug
-                        if slug_str and not slug_str.isdigit() and ('-' in slug_str or any(c.isalpha() for c in slug_str)):
-                            slug = slug_str
-                    
-                    # 如果event没有有效slug，尝试从market获取
-                    if not slug and market.get("slug"):
-                        slug_str = str(market.get("slug", "")).strip()
-                        if slug_str and not slug_str.isdigit() and ('-' in slug_str or any(c.isalpha() for c in slug_str)):
-                            slug = slug_str
-                    
-                    # 如果仍然没有有效slug，尝试通过API查询获取
-                    if not slug and market_id:
-                        try:
-                            # 使用markets端点通过ID查询，获取完整的slug信息
-                            detail_market = self._fetch_market_detail_by_id(market_id)
-                            if detail_market and detail_market.get("slug"):
-                                slug_str = str(detail_market.get("slug", "")).strip()
-                                if slug_str and not slug_str.isdigit() and ('-' in slug_str or any(c.isalpha() for c in slug_str)):
-                                    slug = slug_str
+                            condition_id = market.get("conditionId") or event.get("conditionId")
+                            if condition_id:
+                                prices = self._get_market_prices_from_clob(condition_id)
+                                if prices:
+                                    yes_price = prices.get("YES", 0)
+                                    no_price = prices.get("NO", 0)
+                                    if yes_price > 0:
+                                        current_probability = yes_price * 100 if yes_price <= 1 else yes_price
+                                        outcome_tokens["YES"] = {"price": yes_price if yes_price <= 1 else yes_price / 100, "volume": 0}
+                                    if no_price > 0:
+                                        outcome_tokens["NO"] = {"price": no_price if no_price <= 1 else no_price / 100, "volume": 0}
                         except Exception as e:
-                            logger.debug(f"Failed to fetch slug for market {market_id}: {e}")
+                            logger.debug(f"Failed to get prices from CLOB API: {e}")
+                        
+                        # Method 2: parse outcomePrices (may be JSON string)
+                        if current_probability == 50.0:
+                            outcome_prices_str = market.get("outcomePrices") or event.get("outcomePrices")
+                            if outcome_prices_str:
+                                try:
+                                    if isinstance(outcome_prices_str, str):
+                                        outcome_prices = json.loads(outcome_prices_str)
+                                    else:
+                                        outcome_prices = outcome_prices_str
+                                    
+                                    # outcomePrices typically ["0.65", "0.35"] for YES and NO
+                                    if isinstance(outcome_prices, list) and len(outcome_prices) >= 2:
+                                        yes_price = _safe_float(outcome_prices[0], 0)
+                                        no_price = _safe_float(outcome_prices[1], 0)
+                                        current_probability = yes_price * 100 if yes_price <= 1 else yes_price
+                                        outcome_tokens["YES"] = {"price": yes_price if yes_price <= 1 else yes_price / 100, "volume": 0}
+                                        outcome_tokens["NO"] = {"price": no_price if no_price <= 1 else no_price / 100, "volume": 0}
+                                except Exception as e:
+                                    logger.debug(f"Failed to parse outcomePrices: {e}")
+                        
+                        outcomes = market.get("outcomes") or market.get("tokens") or event.get("outcomes") or []
+                        for outcome in outcomes:
+                            try:
+                                if isinstance(outcome, str):
+                                    outcome_upper = outcome.upper()
+                                    if "YES" in outcome_upper:
+                                        if "YES" not in outcome_tokens:
+                                            outcome_tokens["YES"] = {"price": 0.5, "volume": 0}
+                                    elif "NO" in outcome_upper:
+                                        if "NO" not in outcome_tokens:
+                                            outcome_tokens["NO"] = {"price": 0.5, "volume": 0}
+                                    continue
+                                
+                                if not isinstance(outcome, dict):
+                                    continue
+                                
+                                title = str(outcome.get("title") or outcome.get("name", "")).upper()
+                                price = _safe_float(outcome.get("price") or outcome.get("probability") or outcome.get("currentPrice"), 0)
+                                
+                                if "YES" in title or title == "YES" or outcome.get("outcome") == "Yes":
+                                    current_probability = price * 100 if price <= 1 else price
+                                    outcome_tokens["YES"] = {
+                                        "price": price if price <= 1 else price / 100,
+                                        "volume": _safe_float(outcome.get("volume") or outcome.get("volume24hr"), 0)
+                                    }
+                                elif "NO" in title or title == "NO" or outcome.get("outcome") == "No":
+                                    outcome_tokens["NO"] = {
+                                        "price": price if price <= 1 else price / 100,
+                                        "volume": _safe_float(outcome.get("volume") or outcome.get("volume24hr"), 0)
+                                    }
+                            except Exception as e:
+                                logger.debug(f"Failed to parse outcome: {e}")
+                                continue
+                        
+                        if current_probability == 50.0:
+                            prob = market.get("probability") or market.get("yesProbability") or event.get("probability")
+                            if prob is not None:
+                                p = _safe_float(prob, 0.5)
+                                current_probability = p * 100 if p <= 1 else p
+                        
+                        # Volume and liquidity (safe parse to avoid ValueError on bad API data)
+                        volume_24h = _safe_float(
+                            market.get("volume_24hr") or market.get("volume24hr") or market.get("volume_24h")
+                            or event.get("volume_24hr") or event.get("volume24hr"),
+                            0
+                        )
+                        liquidity = _safe_float(
+                            market.get("liquidity") or market.get("totalLiquidity") or event.get("liquidity"),
+                            0
+                        )
+                        
+                        # Parse end date
+                        end_date_iso = None
+                        end_date = market.get("endDate") or market.get("end_date") or event.get("endDate") or event.get("end_date")
+                        if end_date:
+                            try:
+                                if isinstance(end_date, (int, float)):
+                                    end_date_iso = datetime.fromtimestamp(end_date).isoformat() + "Z"
+                                elif isinstance(end_date, str):
+                                    end_date_iso = end_date
+                            except Exception:
+                                pass
+                        
+                        slug = None
+                        if event.get("slug"):
+                            slug_str = str(event.get("slug", "")).strip()
+                            if slug_str and not slug_str.isdigit() and ('-' in slug_str or any(c.isalpha() for c in slug_str)):
+                                slug = slug_str
+                        
+                        if not slug and market.get("slug"):
+                            slug_str = str(market.get("slug", "")).strip()
+                            if slug_str and not slug_str.isdigit() and ('-' in slug_str or any(c.isalpha() for c in slug_str)):
+                                slug = slug_str
+                        
+                        if not slug and market_id:
+                            try:
+                                detail_market = self._fetch_market_detail_by_id(market_id)
+                                if detail_market and detail_market.get("slug"):
+                                    slug_str = str(detail_market.get("slug", "")).strip()
+                                    if slug_str and not slug_str.isdigit() and ('-' in slug_str or any(c.isalpha() for c in slug_str)):
+                                        slug = slug_str
+                            except Exception as e:
+                                logger.debug(f"Failed to fetch slug for market {market_id}: {e}")
+                        
+                        polymarket_url = self._build_polymarket_url(slug, market_id)
+                        if not slug:
+                            logger.warning(f"Market {market_id} has no valid slug, using markets endpoint as fallback")
+                        
+                        market_data = {
+                            "market_id": market_id,
+                            "question": question,
+                            "category": inferred_category,
+                            "current_probability": round(current_probability, 2),
+                            "volume_24h": volume_24h,
+                            "liquidity": liquidity,
+                            "end_date_iso": end_date_iso,
+                            "status": "active" if market.get("active", event.get("active", True)) else "closed",
+                            "outcome_tokens": outcome_tokens,
+                            "polymarket_url": polymarket_url,
+                            "slug": slug if slug else None
+                        }
                     
-                    # 构建URL（使用统一的辅助方法）
-                    polymarket_url = self._build_polymarket_url(slug, market_id)
-                    if not slug:
-                        logger.warning(f"Market {market_id} has no valid slug, using markets endpoint as fallback")
-                    
-                    market_data = {
-                        "market_id": market_id,
-                        "question": question,
-                        "category": inferred_category,
-                        "current_probability": round(current_probability, 2),
-                        "volume_24h": volume_24h,
-                        "liquidity": liquidity,
-                        "end_date_iso": end_date_iso,
-                        "status": "active" if market.get("active", event.get("active", True)) else "closed",
-                        "outcome_tokens": outcome_tokens,
-                        "polymarket_url": polymarket_url,
-                        "slug": slug if slug else None  # 保存slug（如果不是数字）
-                    }
-                    
-                    parsed.append(market_data)
-                    
-                    if idx < 3 and market_idx < 2:  # 记录成功解析的市场
-                        logger.info(f"Successfully parsed market: {question[:50]}, prob={current_probability:.1f}%, volume={volume_24h}")
+                        parsed.append(market_data)
+                        
+                        if idx < 3 and market_idx < 2:
+                            logger.info(f"Successfully parsed market: {question[:50]}, prob={current_probability:.1f}%, volume={volume_24h}")
+                    except Exception as e:
+                        logger.debug(f"Failed to parse market {market_idx} in event {idx}: {e}")
+                        continue
                     
             except Exception as e:
                 logger.warning(f"Failed to parse event {idx} (id={event.get('id', event.get('slug', 'unknown'))}): {e}", exc_info=True)
@@ -754,15 +736,15 @@ Search for related prediction markets. Prefer API for fresh data; DB is optional
         return parsed
     
     def _parse_rest_markets(self, markets_data: List[Dict]) -> List[Dict]:
-        """解析REST API返回的市场数据"""
+        """Parse market data returned by the REST API."""
         parsed = []
         for market in markets_data:
             try:
-                # 提取基本信息
+                # Extract basic info
                 market_id = market.get("id") or market.get("slug") or market.get("market_id", "")
                 question = market.get("question") or market.get("title", "")
                 
-                # 计算概率
+                # Calculate probability
                 current_probability = 50.0
                 outcome_tokens = {}
                 
@@ -785,10 +767,10 @@ Search for related prediction markets. Prefer API for fresh data; DB is optional
                 volume_24h = float(market.get("volume_24h", market.get("volume", 0)) or 0)
                 liquidity = float(market.get("liquidity", 0) or 0)
                 
-                # 推断类别
+                # Infer category
                 category = self._infer_category(question)
                 
-                # 解析结束日期
+                # Parse end date
                 end_date_iso = market.get("end_date") or market.get("endDate")
                 if isinstance(end_date_iso, (int, float)):
                     try:
@@ -796,15 +778,15 @@ Search for related prediction markets. Prefer API for fresh data; DB is optional
                     except:
                         end_date_iso = None
                 
-                # 获取slug用于构建URL
+                # Get slug for URL build
                 slug = None
                 slug_str = str(market.get('slug', '')).strip() if market.get('slug') else ''
                 
-                # 检查slug是否有效（不是数字，且包含字母或连字符）
+                # Check slug is valid (not number, contains letters or dashes)
                 if slug_str and not slug_str.isdigit() and ('-' in slug_str or any(c.isalpha() for c in slug_str)):
                     slug = slug_str
                 else:
-                    # 如果slug无效，尝试通过API查询获取
+                    # If slug is invalid, try to fetch from API
                     try:
                         detail_market = self._fetch_market_detail_by_id(market_id)
                         if detail_market and detail_market.get("slug"):
@@ -813,8 +795,6 @@ Search for related prediction markets. Prefer API for fresh data; DB is optional
                                 slug = slug_str
                     except Exception as e:
                         logger.debug(f"Failed to fetch slug for market {market_id}: {e}")
-                
-                # 构建URL（使用统一的辅助方法）
                 polymarket_url = self._build_polymarket_url(slug, market_id)
                 if not slug:
                     logger.warning(f"Market {market_id} has no valid slug, using markets endpoint as fallback")
@@ -839,55 +819,55 @@ Search for related prediction markets. Prefer API for fresh data; DB is optional
         return parsed
     
     def _infer_category(self, question: str) -> str:
-        """从问题中推断类别"""
+        """Infer category from question."""
         question_lower = question.lower()
         
-        # 加密货币关键词
+        # Crypto keywords
         crypto_keywords = ['btc', 'bitcoin', 'eth', 'ethereum', 'sol', 'solana', 'crypto', 'token', 'coin', 'defi', 'nft']
         if any(kw in question_lower for kw in crypto_keywords):
             return "crypto"
         
-        # 政治关键词
+        # Politics keywords
         politics_keywords = ['election', 'president', 'trump', 'biden', 'senate', 'congress', 'vote', 'political', 'democrat', 'republican']
         if any(kw in question_lower for kw in politics_keywords):
             return "politics"
         
-        # 经济关键词
+        # Economics keywords
         economics_keywords = ['gdp', 'inflation', 'unemployment', 'fed', 'federal reserve', 'interest rate', 'economic', 'economy', 'recession', 'gdp growth', 'cpi', 'ppi']
         if any(kw in question_lower for kw in economics_keywords):
             return "economics"
         
-        # 体育关键词
+        # Sports keywords
         sports_keywords = ['nfl', 'nba', 'mlb', 'soccer', 'football', 'basketball', 'baseball', 'championship', 'world cup', 'olympics', 'super bowl', 'stanley cup', 'world series']
         if any(kw in question_lower for kw in sports_keywords):
             return "sports"
         
-        # 科技关键词
+        # Tech keywords
         tech_keywords = ['ai', 'artificial intelligence', 'chatgpt', 'openai', 'tech', 'technology', 'apple', 'google', 'microsoft', 'meta', 'tesla', 'ipo', 'startup']
         if any(kw in question_lower for kw in tech_keywords):
             return "tech"
         
-        # 金融关键词
+        # Finance keywords
         finance_keywords = ['stock', 's&p', 'dow', 'nasdaq', 'market cap', 'earnings', 'revenue', 'profit', 'bank', 'banking', 'financial', 'trading']
         if any(kw in question_lower for kw in finance_keywords):
             return "finance"
         
-        # 地缘政治关键词
+        # Geopolitics keywords
         geopolitics_keywords = ['war', 'conflict', 'russia', 'ukraine', 'china', 'taiwan', 'north korea', 'iran', 'israel', 'palestine', 'middle east', 'nato', 'sanctions']
         if any(kw in question_lower for kw in geopolitics_keywords):
             return "geopolitics"
         
-        # 文化关键词
+        # Culture keywords
         culture_keywords = ['movie', 'film', 'oscar', 'grammy', 'award', 'celebrity', 'music', 'album', 'tv show', 'series', 'netflix', 'disney']
         if any(kw in question_lower for kw in culture_keywords):
             return "culture"
         
-        # 气候关键词
+        # Climate keywords
         climate_keywords = ['climate', 'global warming', 'temperature', 'carbon', 'emission', 'renewable', 'solar', 'wind energy', 'paris agreement', 'cop']
         if any(kw in question_lower for kw in climate_keywords):
             return "climate"
         
-        # 娱乐关键词
+        # Entertainment keywords
         entertainment_keywords = ['game', 'gaming', 'esports', 'tournament', 'streaming', 'youtube', 'twitch', 'podcast', 'comic', 'anime', 'manga']
         if any(kw in question_lower for kw in entertainment_keywords):
             return "entertainment"
@@ -896,19 +876,19 @@ Search for related prediction markets. Prefer API for fresh data; DB is optional
     
     def _build_polymarket_url(self, slug: Optional[str], market_id: str) -> str:
         """
-        根据slug构建Polymarket URL
-        参考: https://docs.polymarket.com/market-data/fetching-markets
+        Build Polymarket URL from slug.
+        See: https://docs.polymarket.com/market-data/fetching-markets
         
         Args:
-            slug: 从API或数据库获取的slug（可能是None或数字字符串）
-            market_id: 市场ID（作为备选）
+            slug: slug fetched from API or database (may be None or number string)
+            market_id: market ID (as fallback)
         
         Returns:
-            Polymarket URL字符串
+            Polymarket URL string
         """
         if slug:
             slug_str = str(slug).strip()
-            # 检查slug是否有效（不是数字，且包含字母或连字符）
+            # Check slug is valid (not number, contains letters or dashes)
             if slug_str and not slug_str.isdigit() and ('-' in slug_str or any(c.isalpha() for c in slug_str)):
                 import re
                 slug_clean = re.sub(r'[^a-zA-Z0-9\-]', '-', slug_str)
@@ -916,12 +896,12 @@ Search for related prediction markets. Prefer API for fresh data; DB is optional
                 if slug_clean:
                     return f"https://polymarket.com/event/{slug_clean}"
         
-        # 如果没有有效slug，尝试通过API获取slug
+        # If no valid slug, try to fetch from API
         if market_id:
             try:
                 detail_market = self._fetch_market_detail_by_id(market_id)
                 if detail_market:
-                    # 尝试从detail中获取slug
+                    # Try to get slug from detail
                     event_slug = detail_market.get('slug')
                     if event_slug:
                         slug_str = str(event_slug).strip()
@@ -932,7 +912,7 @@ Search for related prediction markets. Prefer API for fresh data; DB is optional
                             if slug_clean:
                                 return f"https://polymarket.com/event/{slug_clean}"
                     
-                    # 如果event没有slug，尝试从markets中获取
+                    # If event has no slug, try to get from markets
                     markets = detail_market.get('markets', [])
                     if markets:
                         for m in markets:
@@ -948,17 +928,16 @@ Search for related prediction markets. Prefer API for fresh data; DB is optional
             except Exception as e:
                 logger.debug(f"Failed to fetch slug for market {market_id}: {e}")
         
-        # 如果所有方法都失败，返回搜索页面（更可靠）
-        # 注意：Polymarket的URL格式可能已经改变，使用搜索作为fallback
+        # If all methods fail, return search page (more reliable)
         return f"https://polymarket.com/search?q={market_id}"
     
     def _fetch_market_detail_by_id(self, market_id: str) -> Optional[Dict]:
         """
-        通过market ID从API获取市场详情（用于获取slug）
-        参考: https://docs.polymarket.com/market-data/fetching-markets
+        Fetch market detail by market ID from API (for slug retrieval).
+        See: https://docs.polymarket.com/market-data/fetching-markets
         """
         try:
-            # 方法1: 尝试通过events端点查询（推荐，因为events包含markets）
+            # Method 1: try to query via events endpoint (recommended, because events contain markets)
             url = f"{self.gamma_api}/events"
             params = {"active": "true", "closed": "false", "limit": 100}
             response = self.session.get(url, params=params, timeout=10)
@@ -974,9 +953,9 @@ Search for related prediction markets. Prefer API for fresh data; DB is optional
                         for market in markets:
                             m_id = market.get("id") or market.get("slug") or ""
                             e_id = event.get("id") or event.get("slug") or ""
-                            # 匹配market_id或event_id
+                            # Match market_id or event_id
                             if str(m_id) == str(market_id) or str(e_id) == str(market_id):
-                                # 返回event（因为event包含slug）
+                                # Return event (because event contains slug)
                                 return event
                 elif isinstance(events, dict):
                     if "data" in events:
@@ -992,7 +971,7 @@ Search for related prediction markets. Prefer API for fresh data; DB is optional
                                 if str(m_id) == str(market_id) or str(e_id) == str(market_id):
                                     return event
             
-            # 方法2: 尝试通过markets端点查询
+            # Method 2: try markets endpoint
             url = f"{self.gamma_api}/markets"
             params = {"id": market_id, "limit": 1}
             response = self.session.get(url, params=params, timeout=10)
@@ -1011,12 +990,10 @@ Search for related prediction markets. Prefer API for fresh data; DB is optional
     
     def _fetch_market_by_slug(self, slug: str) -> Optional[Dict]:
         """
-        直接通过slug查询市场（最高效的方式）
-        根据Polymarket API文档：https://docs.polymarket.com/market-data/fetching-markets
-        可以使用 /markets?slug=xxx 直接查询
+        Fetch market by slug (most efficient). Use /markets?slug=xxx per Polymarket API docs.
         """
         try:
-            # 方法1: 尝试通过markets端点直接查询slug
+            # Method 1: query markets endpoint by slug
             url = f"{self.gamma_api}/markets"
             params = {"slug": slug, "limit": 10}
             logger.info(f"Fetching market by slug from Gamma API: {url} with params: {params}")
@@ -1025,26 +1002,22 @@ Search for related prediction markets. Prefer API for fresh data; DB is optional
             if response.status_code == 200:
                 data = response.json()
                 if isinstance(data, list) and len(data) > 0:
-                    # 解析返回的市场数据
                     markets = self._parse_gamma_events(data)
-                    # 精确匹配slug
                     for market in markets:
                         market_slug = market.get("slug", "").lower()
                         if market_slug == slug.lower() or slug.lower() in market_slug:
                             logger.info(f"Found market by slug: {slug}")
                             return market
-                    # 如果没有精确匹配，返回第一个
                     if markets:
                         logger.info(f"Found market by slug (fuzzy match): {slug}")
                         return markets[0]
                 elif isinstance(data, dict):
-                    # 单个市场对象
                     markets = self._parse_gamma_events([data])
                     if markets:
                         logger.info(f"Found market by slug: {slug}")
                         return markets[0]
             
-            # 方法2: 尝试通过events端点查询（events可能包含slug信息）
+            # Method 2: try events endpoint (events may contain slug)
             url = f"{self.gamma_api}/events"
             params = {"active": "true", "closed": "false", "limit": 100}
             response = self.session.get(url, params=params, timeout=10)
@@ -1052,8 +1025,6 @@ Search for related prediction markets. Prefer API for fresh data; DB is optional
             if response.status_code == 200:
                 data = response.json()
                 events = data if isinstance(data, list) else (data.get("data", []) if isinstance(data, dict) else [])
-                
-                # 在返回的事件中查找匹配的slug
                 for event in events:
                     event_slug = (event.get("slug") or "").lower()
                     if event_slug == slug.lower() or slug.lower() in event_slug:
@@ -1070,21 +1041,13 @@ Search for related prediction markets. Prefer API for fresh data; DB is optional
             return None
     
     def _fetch_market_from_api(self, market_id: str) -> Optional[Dict]:
-        """
-        从Gamma API获取单个市场数据
-        支持通过slug或id查询
-        """
+        """Fetch a single market from Gamma API by slug or id."""
         try:
-            # 判断是slug还是market_id
             is_slug = not market_id.isdigit() and ('-' in market_id or any(c.isalpha() for c in market_id))
-            
-            # 如果是slug，优先使用直接查询方法
             if is_slug:
                 market = self._fetch_market_by_slug(market_id)
                 if market:
                     return market
-            
-            # 方法1: 通过markets端点查询（支持id和slug）
             url = f"{self.gamma_api}/markets"
             params = {"id": market_id, "limit": 10} if not is_slug else {"slug": market_id, "limit": 10}
             response = self.session.get(url, params=params, timeout=10)
@@ -1099,8 +1062,6 @@ Search for related prediction markets. Prefer API for fresh data; DB is optional
                     markets = self._parse_gamma_events([data])
                     if markets:
                         return markets[0]
-            
-            # 方法2: 通过events端点搜索（作为备选）
             url = f"{self.gamma_api}/events"
             params = {
                 "active": "true",
@@ -1112,8 +1073,6 @@ Search for related prediction markets. Prefer API for fresh data; DB is optional
             if response.status_code == 200:
                 data = response.json()
                 events = data if isinstance(data, list) else (data.get("data", []) if isinstance(data, dict) else [])
-                
-                # 在返回的事件中查找匹配的市场
                 for event in events:
                     markets = event.get("markets", [])
                     if not markets:
@@ -1133,24 +1092,20 @@ Search for related prediction markets. Prefer API for fresh data; DB is optional
             return None
     
     def _save_markets_to_db(self, markets: List[Dict]):
-        """保存市场数据到数据库"""
+        """Save market data to the database."""
         if not is_postgres_available():
             return
         try:
             with get_db_connection() as db:
                 cur = db.cursor()
                 for market in markets:
-                    # 获取slug，但如果是数字则不要使用（数字不是有效的slug）
                     slug = market.get('slug') or None
-                    # 如果slug是数字，说明不是有效的slug，设置为None
                     if slug and str(slug).isdigit():
                         slug = None
-                    # 清理slug，只保留字母数字和连字符
                     import re
                     if slug:
                         slug = re.sub(r'[^a-zA-Z0-9\-]', '-', str(slug))
                         slug = slug.strip('-')
-                        # 如果清理后为空或仍然是数字，设置为None
                         if not slug or slug.isdigit():
                             slug = None
                     
@@ -1192,10 +1147,6 @@ Search for related prediction markets. Prefer API for fresh data; DB is optional
                 logger.error("Failed to save markets to DB: %s", e, exc_info=True)
     
     def _get_sample_markets(self, category: str = None, limit: int = 50) -> List[Dict]:
-        """
-        获取示例市场数据（已弃用）
-        现在应该使用真实的API数据
-        """
-        # 不再返回示例数据，返回空列表
+        """Get sample market data (deprecated). Use real API data instead."""
         logger.warning("Sample data method called, but real API should be used instead")
         return []
