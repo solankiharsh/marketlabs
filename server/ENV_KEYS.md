@@ -50,11 +50,26 @@ Use this with `.env.example`: copy to `.env` and set values. Keys needed to fix 
 
 ---
 
-## Optional: Market data (Forex / metals)
+## Optional: Market data (Forex / metals / crypto)
 
 | Variable | Where to get it |
 |----------|-----------------|
 | **TIINGO_API_KEY** | [Tiingo](https://www.tiingo.com/account/api/token) — free tier supports major forex pairs and some metals. Used for Forex (e.g. EURUSD, XAUUSD, XAGUSD) price and K-line data. If not set, the app falls back to **yfinance** for Forex so symbols like XAGUSD can still work locally. |
+| **CCXT_DEFAULT_EXCHANGE** | Exchange for crypto data: `binance` (default), `coinbase`, `kraken`, etc. If Binance is geo-blocked (e.g. on Railway), use `coinbase` or `kraken`. With `coinbase` and no API key set, the app uses **kraken** automatically for public data. |
+| **CCXT_API_KEY** / **CCXT_SECRET** | Optional. Only needed if you want to use Coinbase (or another exchange that requires credentials for public endpoints in your CCXT build). For public ticker/OHLCV only, leave unset and use `kraken` or set `CCXT_DEFAULT_EXCHANGE=kraken`. |
+
+---
+
+## Where do I get the CCXT / exchange API key?
+
+**You usually don’t need one.** The app uses **Kraken** for public crypto data when `CCXT_DEFAULT_EXCHANGE=coinbase` and no API key is set, so crypto charts work without any key.
+
+The [CCXT “Exchange Markets By Country”](https://docs.ccxt.com/Exchange-Markets-By-Country) page only lists **which exchanges are available in which countries**. It does **not** hand out API keys.
+
+**If you want to use Coinbase (or another exchange) with a key:**
+
+- **Coinbase**: [Coinbase Advanced Trade](https://help.coinbase.com/en/exchange/trading-and-funding/api-access) → sign in → **API** → create API key. Use that as `CCXT_API_KEY` and (if shown) the secret as `CCXT_SECRET`.
+- **Other exchanges**: Log into the exchange’s website, open **Settings** or **API** / **Developer**, create an API key, and copy the key and secret into `CCXT_API_KEY` and `CCXT_SECRET` in your `.env`.
 
 ---
 

@@ -1,12 +1,14 @@
 'use client';
 
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useCallback } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { Search, ChevronDown, LogOut, User, Bell } from 'lucide-react';
+import { Search, ChevronDown, LogOut, User, Bell, RefreshCw } from 'lucide-react';
 import { useAuthStore } from '@/store/auth';
-import { searchSymbols, type SymbolSearchItem } from '@/lib/api';
+import { searchSymbols, getStrategyNotifications, markNotificationRead, markAllNotificationsRead, type SymbolSearchItem } from '@/lib/api';
 import { cn } from '@/lib/utils';
+
+type NotificationItem = Record<string, unknown> & { id?: number; is_read?: number; message?: string; content?: string; created_at?: number };
 
 export function TopBar() {
   const router = useRouter();
@@ -16,8 +18,11 @@ export function TopBar() {
   const [searchOpen, setSearchOpen] = useState(false);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const [notificationsOpen, setNotificationsOpen] = useState(false);
+  const [notifications, setNotifications] = useState<NotificationItem[]>([]);
+  const [notificationsLoading, setNotificationsLoading] = useState(false);
   const searchRef = useRef<HTMLDivElement>(null);
   const userRef = useRef<HTMLDivElement>(null);
+  const notificationsRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (!searchQuery.trim()) {
@@ -32,11 +37,37 @@ export function TopBar() {
     return () => clearTimeout(t);
   }, [searchQuery]);
 
+  const NOTIFICATIONS_TIMEOUT_MS = 10000;
+
+  const fetchNotifications = useCallback(() => {
+    setNotificationsLoading(true);
+    const timeoutPromise = new Promise<never>((_, reject) =>
+      setTimeout(() => reject(new Error('timeout')), NOTIFICATIONS_TIMEOUT_MS)
+    );
+    Promise.race([getStrategyNotifications({ limit: 30 }), timeoutPromise])
+      .then((r) => setNotifications((r.items ?? []) as NotificationItem[]))
+      .catch(() => setNotifications([]))
+      .finally(() => setNotificationsLoading(false));
+  }, []);
+
+  useEffect(() => {
+    if (notificationsOpen) fetchNotifications();
+  }, [notificationsOpen, fetchNotifications]);
+
+  useEffect(() => {
+    if (!user) return;
+    getStrategyNotifications({ limit: 50 })
+      .then((r) => setNotifications((r.items ?? []) as NotificationItem[]))
+      .catch(() => setNotifications([]));
+  }, [user]);
+
   useEffect(() => {
     function handleClickOutside(e: MouseEvent) {
+      const target = e.target as Node;
       if (
-        searchRef.current && !searchRef.current.contains(e.target as Node) &&
-        userRef.current && !userRef.current.contains(e.target as Node)
+        searchRef.current && !searchRef.current.contains(target) &&
+        userRef.current && !userRef.current.contains(target) &&
+        notificationsRef.current && !notificationsRef.current.contains(target)
       ) {
         setSearchOpen(false);
         setUserMenuOpen(false);
@@ -46,6 +77,22 @@ export function TopBar() {
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
+
+  const unreadCount = notifications.filter((n) => !n.is_read).length;
+
+  const handleMarkAllRead = async () => {
+    try {
+      await markAllNotificationsRead();
+      setNotifications((prev) => prev.map((n) => ({ ...n, is_read: 1 })));
+    } catch {}
+  };
+
+  const handleMarkOneRead = async (id: number) => {
+    try {
+      await markNotificationRead(id);
+      setNotifications((prev) => prev.map((n) => (n.id === id ? { ...n, is_read: 1 } : n)));
+    } catch {}
+  };
 
   const handleLogout = async () => {
     setUserMenuOpen(false);
@@ -96,14 +143,82 @@ export function TopBar() {
       </div>
 
       <div className="flex items-center gap-1">
-        <button
-          type="button"
-          onClick={() => setNotificationsOpen((o) => !o)}
-          className="p-2 rounded-lg text-text-muted hover:bg-bg-elevated hover:text-text-primary"
-          aria-label="Notifications"
-        >
-          <Bell className="h-5 w-5" />
-        </button>
+        <div className="relative" ref={notificationsRef}>
+          <button
+            type="button"
+            onClick={() => setNotificationsOpen((o) => !o)}
+            className="p-2 rounded-lg text-text-muted hover:bg-bg-elevated hover:text-text-primary relative"
+            aria-label="Notifications"
+          >
+            <Bell className="h-5 w-5" />
+            {unreadCount > 0 && (
+              <span className="absolute -top-0.5 -right-0.5 flex h-4 min-w-[1rem] items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-medium text-white">
+                {unreadCount > 99 ? '99+' : unreadCount}
+              </span>
+            )}
+          </button>
+          {notificationsOpen && (
+            <div className="absolute right-0 top-full mt-1 w-80 max-h-[min(24rem,70vh)] rounded-lg border border-border bg-card shadow-lg z-50 flex flex-col">
+              <div className="flex items-center justify-between px-3 py-2 border-b border-border">
+                <span className="font-medium text-text-primary text-sm">Notifications</span>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={fetchNotifications}
+                    disabled={notificationsLoading}
+                    className="p-1.5 rounded text-text-muted hover:bg-bg-elevated hover:text-text-primary disabled:opacity-50"
+                    aria-label="Refresh notifications"
+                  >
+                    <RefreshCw className={cn('h-4 w-4', notificationsLoading && 'animate-spin')} />
+                  </button>
+                  {unreadCount > 0 && (
+                    <button
+                      type="button"
+                      onClick={handleMarkAllRead}
+                      className="text-xs text-accent-primary hover:underline"
+                    >
+                      Mark all as read
+                    </button>
+                  )}
+                </div>
+              </div>
+              <ul className="overflow-auto flex-1 py-1">
+                {notificationsLoading ? (
+                  <li className="px-3 py-4 text-center text-sm text-text-muted">Loading…</li>
+                ) : notifications.length === 0 ? (
+                  <li className="px-3 py-4 text-center text-sm text-text-muted">No notifications</li>
+                ) : (
+                  notifications.map((n) => {
+                    const isRead = !!n.is_read;
+                    const msg = String(n.message ?? n.content ?? '—');
+                    return (
+                      <li
+                        key={String(n.id)}
+                        className={cn(
+                          'px-3 py-2 text-sm border-b border-border/50 last:border-0',
+                          !isRead && 'bg-accent-primary/5'
+                        )}
+                      >
+                        <div className="flex items-start justify-between gap-2">
+                          <span className={isRead ? 'text-text-muted' : 'text-text-primary'}>{msg}</span>
+                          {n.id != null && !isRead && (
+                            <button
+                              type="button"
+                              onClick={() => handleMarkOneRead(Number(n.id))}
+                              className="text-xs text-accent-primary hover:underline shrink-0"
+                            >
+                              Mark read
+                            </button>
+                          )}
+                        </div>
+                      </li>
+                    );
+                  })
+                )}
+              </ul>
+            </div>
+          )}
+        </div>
 
         <div className="relative" ref={userRef}>
           <button

@@ -10,11 +10,12 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import type { KLineData } from 'klinecharts';
 import { fetchOHLCV, fetchRealtimePrice, generateMockData } from '@/lib/chart-data';
-import { useKlineChart, INDICATOR_PANE_ORDER } from '@/hooks/use-kline-chart';
+import { useKlineChart, INDICATOR_PANE_ORDER, type CustomIndicatorOverlay } from '@/hooks/use-kline-chart';
 import { type TimeframeValue } from './TimeframeBar';
 import { IndicatorToggles } from './IndicatorToggles';
 import { OHLCVInfoBar } from './OHLCVInfoBar';
 import { ChartToolbar, DRAWING_TOOL_OVERLAY } from './ChartToolbar';
+import type { ExecuteIndicatorOutput } from '@/lib/api';
 
 const PERIOD_MAP: Record<TimeframeValue, string> = {
   '1m': '1m',
@@ -41,6 +42,8 @@ export interface ChartSectionProps {
   onAddToWatchlist?: () => void;
   /** Called when price/change updates (e.g. for PriceDisplay above Technical Indicators) */
   onPriceUpdate?: (data: { price?: number; changePercent?: number }) => void;
+  /** When set, strategy is active on chart (name + signals summary shown; chart data may include signal markers) */
+  indicatorOutput?: ExecuteIndicatorOutput | null;
 }
 
 export function ChartSection({
@@ -53,6 +56,7 @@ export function ChartSection({
   onTimeframeChange,
   onAddToWatchlist,
   onPriceUpdate,
+  indicatorOutput,
 }: ChartSectionProps) {
   const [internalMarket, setInternalMarket] = useState('Crypto');
   const [internalSymbol, setInternalSymbol] = useState('BTC/USDT');
@@ -69,7 +73,9 @@ export function ChartSection({
   const [drawingTool, setDrawingTool] = useState<string | null>(null);
   const [priceData, setPriceData] = useState<{ price?: number; changePercent?: number }>({});
   const [loading, setLoading] = useState(true);
+  const [lastCandle, setLastCandle] = useState<KLineData | null>(null);
   const dataRef = useRef<KLineData[]>([]);
+  const rawDataRef = useRef<KLineData[]>([]);
 
   useEffect(() => {
     onPriceUpdate?.(priceData);
@@ -79,6 +85,7 @@ export function ChartSection({
     containerRef,
     setData,
     setIndicators,
+    setCustomIndicatorOverlay,
     updateLastCandle,
     onCrosshair,
     setDrawingTool: setChartDrawingTool,
@@ -88,6 +95,19 @@ export function ChartSection({
   // Crosshair → OHLCV bar
   onCrosshair((data) => setOhlcvCandle(data));
 
+  // Merge strategy signals into candle data for chart (buy/sell markers by index)
+  const mergeIndicatorSignals = useCallback((data: KLineData[]): KLineData[] => {
+    if (!indicatorOutput?.signals?.length || data.length === 0) return data;
+    const buySignal = indicatorOutput.signals.find((s) => s.type === 'buy');
+    const sellSignal = indicatorOutput.signals.find((s) => s.type === 'sell');
+    return data.map((candle, i) => {
+      const out = { ...candle } as KLineData & { buy?: boolean; sell?: boolean };
+      if (buySignal?.data?.[i]) out.buy = true;
+      if (sellSignal?.data?.[i]) out.sell = true;
+      return out;
+    });
+  }, [indicatorOutput]);
+
   // Fetch OHLCV when market, symbol, or timeframe changes
   const loadData = useCallback(() => {
     if (!market || !symbol) return;
@@ -95,27 +115,71 @@ export function ChartSection({
     const period = PERIOD_MAP[timeframe];
     fetchOHLCV(market, symbol, period, 300)
       .then((data) => {
-        dataRef.current = data;
-        setData(data);
+        const raw = data.length > 0 ? data : generateMockData(200);
+        rawDataRef.current = raw;
+        const chartData = mergeIndicatorSignals(raw);
+        dataRef.current = chartData;
+        setData(chartData);
+        setLastCandle(chartData[chartData.length - 1] ?? null);
         setIndicators(activeIndicators);
-        if (data.length === 0) {
-          const mock = generateMockData(200);
-          dataRef.current = mock;
-          setData(mock);
-        }
       })
       .catch(() => {
         const mock = generateMockData(200);
-        dataRef.current = mock;
-        setData(mock);
+        rawDataRef.current = mock;
+        dataRef.current = mergeIndicatorSignals(mock);
+        setData(dataRef.current);
+        setLastCandle(dataRef.current[dataRef.current.length - 1] ?? null);
         setIndicators(activeIndicators);
       })
       .finally(() => setLoading(false));
-  }, [market, symbol, timeframe, setData, setIndicators, activeIndicators]);
+  }, [market, symbol, timeframe, setData, setIndicators, activeIndicators, mergeIndicatorSignals]);
 
   useEffect(() => {
     loadData();
   }, [loadData]);
+
+  // When strategy output changes, re-merge signals into current raw data and update custom overlay
+  useEffect(() => {
+    const raw = rawDataRef.current;
+    if (raw.length > 0) {
+      const chartData = mergeIndicatorSignals(raw);
+      dataRef.current = chartData;
+      setData(chartData);
+      setLastCandle(chartData[chartData.length - 1] ?? null);
+    }
+
+    if (!indicatorOutput) {
+      setCustomIndicatorOverlay(null);
+      return;
+    }
+
+    const candles = rawDataRef.current;
+    if (candles.length === 0) return;
+
+    const lines = (indicatorOutput.plots ?? [])
+      .filter((p) => p.overlay)
+      .map((p) => ({
+        name: p.name,
+        data: p.data ?? [],
+        color: p.color || '#D4A843',
+      }));
+
+    const signalPoints: CustomIndicatorOverlay['signalPoints'] = [];
+    (indicatorOutput.signals ?? []).forEach((sig) => {
+      const type = sig.type === 'buy' ? 'B' : 'S';
+      (sig.data ?? []).forEach((val, i) => {
+        if (val != null && val !== 0 && candles[i]) {
+          signalPoints.push({
+            timestamp: candles[i].timestamp,
+            value: candles[i].close,
+            type,
+          });
+        }
+      });
+    });
+
+    setCustomIndicatorOverlay({ lines, signalPoints });
+  }, [indicatorOutput, mergeIndicatorSignals, setData, setCustomIndicatorOverlay]);
 
   // When indicators change, re-apply (chart already has data)
   useEffect(() => {
@@ -156,15 +220,30 @@ export function ChartSection({
     setDrawingTool(id);
   }, []);
 
+  const buyCount = indicatorOutput?.signals?.find((s) => s.type === 'buy')?.data?.filter((v) => v != null && v !== 0).length ?? 0;
+  const sellCount = indicatorOutput?.signals?.find((s) => s.type === 'sell')?.data?.filter((v) => v != null && v !== 0).length ?? 0;
+
   return (
     <div className={`rounded-xl border ${dark ? 'border-[#2A3040] bg-[#0F1117]' : 'border-gray-200 bg-white'}`}>
-      {/* Indicator toggles */}
-      <div className="px-3 py-2 border-b border-[#2A3040]">
+      {/* Strategy applied badge + Indicator toggles */}
+      <div className="px-3 py-2 border-b border-[#2A3040] space-y-2">
+        {indicatorOutput && (
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="text-xs font-medium text-accent-primary bg-accent-primary/10 px-2 py-1 rounded">
+              Strategy: {indicatorOutput.name}
+            </span>
+            {(buyCount > 0 || sellCount > 0) && (
+              <span className="text-xs text-text-muted">
+                {buyCount} buy · {sellCount} sell
+              </span>
+            )}
+          </div>
+        )}
         <IndicatorToggles active={activeIndicators} onToggle={handleToggleIndicator} dark={dark} />
       </div>
 
-      {/* OHLCV info bar */}
-      <OHLCVInfoBar candle={ohlcvCandle} />
+      {/* OHLCV info bar: crosshair candle when hovering, latest candle when idle */}
+      <OHLCVInfoBar candle={ohlcvCandle ?? lastCandle} />
 
       {/* Chart + Left toolbar + Right price; height grows with indicator panes so each stays readable */}
       {(() => {

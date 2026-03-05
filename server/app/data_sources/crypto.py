@@ -50,6 +50,12 @@ class CryptoDataSource(BaseDataSource):
                 'timeout': CCXTConfig.TIMEOUT,
                 'enableRateLimit': CCXTConfig.ENABLE_RATE_LIMIT
             }
+            api_key = (CCXTConfig.API_KEY or '').strip()
+            secret = (CCXTConfig.SECRET or '').strip()
+            if api_key:
+                config['apiKey'] = api_key
+            if secret:
+                config['secret'] = secret
             if CCXTConfig.PROXY:
                 config['proxies'] = {
                     'http': CCXTConfig.PROXY,
@@ -57,8 +63,18 @@ class CryptoDataSource(BaseDataSource):
                 }
             exchange_id = CCXTConfig.DEFAULT_EXCHANGE
             if not hasattr(ccxt, exchange_id):
-                logger.warning("CCXT exchange '%s' not found, falling back to 'coinbase'", exchange_id)
-                exchange_id = 'coinbase'
+                logger.warning("CCXT exchange '%s' not found, falling back to 'kraken'", exchange_id)
+                exchange_id = 'kraken'
+            # Exchanges that require apiKey even for public endpoints (CCXT implementation quirk)
+            _requires_creds = ('coinbase', 'coinbasepro')
+            if exchange_id.lower() in _requires_creds and not api_key:
+                logger.info(
+                    "CCXT exchange '%s' requires API credentials for this build. "
+                    "Using 'kraken' for public market data (no keys required). "
+                    "To use %s, set CCXT_API_KEY (and optionally CCXT_SECRET) in your env.",
+                    exchange_id, exchange_id
+                )
+                exchange_id = 'kraken'
             exchange_class = getattr(ccxt, exchange_id)
             self.exchange = exchange_class(config)
         else:

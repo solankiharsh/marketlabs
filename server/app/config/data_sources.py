@@ -129,6 +129,18 @@ class MetaCCXTConfig(type):
         }
 
     @property
+    def API_KEY(cls):
+        from app.utils.config_loader import load_addon_config
+        val = load_addon_config().get('ccxt', {}).get('api_key')
+        return (val or os.getenv('CCXT_API_KEY') or '').strip()
+
+    @property
+    def SECRET(cls):
+        from app.utils.config_loader import load_addon_config
+        val = load_addon_config().get('ccxt', {}).get('secret')
+        return (val or os.getenv('CCXT_SECRET') or '').strip()
+
+    @property
     def PROXY(cls):
         from app.utils.config_loader import load_addon_config
         val = load_addon_config().get('ccxt', {}).get('proxy')

@@ -12,11 +12,13 @@ import {
   ShoppingBag,
   User,
   CreditCard,
+  Bot,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 const navItems = [
   { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
+  { href: '/trading-assistant', label: 'Trading Assistant', icon: Bot },
   { href: '/ai-analysis', label: 'AI Asset Analysis', icon: Sparkles },
   { href: '/indicator-analysis', label: 'Indicator Analysis', icon: LineChart },
   { href: '/indicator-market', label: 'Indicator Market', icon: ShoppingBag },

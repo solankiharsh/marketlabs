@@ -24,3 +24,21 @@ export ADMIN_PASSWORD=your_secure_password
 ```
 
 Then log in with `ADMIN_USER` / `ADMIN_PASSWORD`. See **docs/RAILWAY_DEPLOY.md** (“Can't log in / qd_users table is empty”) for Railway-specific steps.
+
+## Seed free public indicators (Indicator Market)
+
+To populate the **Indicator Market** with free, public indicators (Dual Moving Average, Bollinger Bands, RSI Strategy) that everyone can see and use:
+
+From the `server` directory (with `DATABASE_URL` set and at least one user in `qd_users`):
+
+```bash
+python scripts/seed_free_indicators.py
+```
+
+Or from repo root:
+
+```bash
+cd server && python scripts/seed_free_indicators.py
+```
+
+This inserts indicators with `publish_to_community=1`, `pricing_type='free'`, `price=0`, and `review_status='approved'`. Re-running the script skips indicators that already exist (by name + owner), so it is safe to run multiple times.

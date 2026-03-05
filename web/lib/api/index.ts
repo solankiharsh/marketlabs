@@ -70,6 +70,7 @@ export {
   previewCompileStrategy,
   getStrategyNotifications,
   markNotificationRead,
+  markAllNotificationsRead,
   testConnection,
 } from './strategies';
 export type { StrategyItem } from './strategies';
@@ -145,13 +146,15 @@ export {
   verifyIndicatorCode,
   aiGenerateIndicator,
   callIndicator,
-  executeIndicator,
+  executeIndicatorWithKline,
 } from './indicators';
 export type {
   IndicatorItem,
   ExecuteIndicatorOutput,
   IndicatorPlot,
   IndicatorSignal,
+  IndicatorParamDef,
+  KlineDataRow,
 } from './indicators';
 
 // Marketplace (v1 localStorage)

@@ -67,6 +67,17 @@ export function BacktestHistoryModal({
       <DialogContent className="max-w-4xl max-h-[80vh] flex flex-col bg-card border-border">
         <DialogHeader>
           <DialogTitle className="text-text-primary">Backtest History</DialogTitle>
+          {indicator && (
+            <p className="text-sm text-text-muted mt-1">
+              Indicator: {indicator.name ?? 'Unnamed'}
+              {symbol && (
+                <span className="ml-2">
+                  · {symbol}
+                  {timeframe && ` ${timeframe}`}
+                </span>
+              )}
+            </p>
+          )}
           <button
             type="button"
             onClick={onClose}

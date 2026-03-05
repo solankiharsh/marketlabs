@@ -28,12 +28,21 @@ export async function deleteIndicator(id: number): Promise<void> {
   unwrap(response);
 }
 
-export async function getIndicatorParams(id: number): Promise<Record<string, unknown>> {
-  const response = await api.get<ZingResponse<Record<string, unknown>>>(
+/** Param definition from backend (parsed from indicator code @param declarations) */
+export interface IndicatorParamDef {
+  name: string;
+  type: 'int' | 'float' | 'bool' | 'str';
+  default: number | boolean | string;
+  description?: string;
+}
+
+export async function getIndicatorParams(indicatorId: number): Promise<IndicatorParamDef[]> {
+  const response = await api.get<ZingResponse<IndicatorParamDef[]>>(
     '/api/indicator/getIndicatorParams',
-    { params: { id } }
+    { params: { indicator_id: indicatorId } }
   );
-  return unwrap(response) ?? {};
+  const data = unwrap(response);
+  return Array.isArray(data) ? data : [];
 }
 
 export async function verifyIndicatorCode(code: string): Promise<{ valid?: boolean }> {
@@ -81,12 +90,24 @@ export interface ExecuteIndicatorOutput {
   signals: IndicatorSignal[];
 }
 
-export async function executeIndicator(
-  code: string,
-  symbol: string,
-  timeframe: string
+/** Kline row for callIndicator: array of { open, high, low, close, volume } (and optional time) */
+export type KlineDataRow = Record<string, number>;
+
+/**
+ * Execute indicator by ID with OHLCV data and optional params.
+ * Fetches are done by the caller; pass klineData in the format the backend expects.
+ */
+export async function executeIndicatorWithKline(
+  indicatorId: number,
+  klineData: KlineDataRow[],
+  params: Record<string, number | string | boolean> = {}
 ): Promise<{ output: ExecuteIndicatorOutput }> {
-  const raw = await callIndicator({ code, symbol, timeframe });
+  const raw = await callIndicator({
+    indicatorRef: indicatorId,
+    klineData,
+    params,
+    currentIndicatorId: indicatorId,
+  });
   const output = raw?.output as ExecuteIndicatorOutput | undefined;
   if (!output || typeof output.name !== 'string') {
     return { output: { name: 'Indicator', plots: [], signals: [] } };

@@ -43,7 +43,11 @@ export default function LoginPage() {
       // Client-side redirect so auth state persists; no full reload that would reset store and re-run checkAuth
       router.replace('/');
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : 'Login failed.');
+      const ax = err as { response?: { data?: { msg?: string } }; message?: string };
+      const msg =
+        ax?.response?.data?.msg ||
+        (err instanceof Error ? err.message : 'Login failed.');
+      setError(msg);
     } finally {
       setLoading(false);
     }

@@ -5,7 +5,7 @@ import { useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { ArrowLeft } from 'lucide-react';
 import { CodeEditor } from '@/components/ui/CodeEditor';
-import { getIndicatorParams, verifyIndicatorCode, saveIndicator, aiGenerateIndicator } from '@/lib/api';
+import { getIndicators, verifyIndicatorCode, saveIndicator, aiGenerateIndicator } from '@/lib/api';
 import { toast } from 'sonner';
 
 export default function IndicatorEditorPage() {
@@ -24,11 +24,14 @@ export default function IndicatorEditorPage() {
   useEffect(() => {
     if (id && !Number.isNaN(id)) {
       setLoading(true);
-      getIndicatorParams(id)
-        .then((params) => {
-          setName(String(params.name ?? ''));
-          setDescription(String(params.description ?? ''));
-          setCode(String(params.code ?? ''));
+      getIndicators()
+        .then((list) => {
+          const ind = list.find((i) => Number(i.id) === id);
+          if (ind) {
+            setName(String(ind.name ?? ''));
+            setDescription(String(ind.description ?? ''));
+            setCode(String(ind.code ?? ''));
+          }
         })
         .catch(() => {})
         .finally(() => setLoading(false));

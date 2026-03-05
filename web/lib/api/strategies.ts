@@ -140,6 +140,11 @@ export async function markNotificationRead(id: number): Promise<void> {
   unwrap(response);
 }
 
+export async function markAllNotificationsRead(): Promise<void> {
+  const response = await api.post<ZingResponse<null>>('/api/strategies/notifications/read-all');
+  unwrap(response);
+}
+
 export async function testConnection(exchangeConfig: Record<string, unknown>): Promise<Record<string, unknown>> {
   const response = await api.post<ZingResponse<Record<string, unknown>>>(
     '/api/strategies/test-connection',

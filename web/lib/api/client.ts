@@ -72,9 +72,13 @@ api.interceptors.response.use(
   (response) => response,
   async (error) => {
     if (error.response?.status === 401) {
-      tokenManager.clearToken();
-      if (typeof window !== 'undefined') {
-        window.location.href = '/login';
+      const isLoginRequest =
+        typeof error.config?.url === 'string' && error.config.url.includes('/api/auth/login');
+      if (!isLoginRequest) {
+        tokenManager.clearToken();
+        if (typeof window !== 'undefined') {
+          window.location.href = '/login';
+        }
       }
     }
     return Promise.reject(error);

@@ -138,7 +138,7 @@ def get_indicators():
                 cur.execute("ALTER TABLE qd_indicator_codes ADD COLUMN IF NOT EXISTS vip_free BOOLEAN DEFAULT FALSE")
             except Exception:
                 pass
-            # Get user's own indicators (both purchased and custom).
+            # User's own indicators + indicators they purchased (from community).
             cur.execute(
                 """
                 SELECT
@@ -147,9 +147,10 @@ def get_indicators():
                   createtime, updatetime, created_at, updated_at
                 FROM qd_indicator_codes
                 WHERE user_id = ?
+                   OR id IN (SELECT indicator_id FROM qd_indicator_purchases WHERE buyer_id = ?)
                 ORDER BY id DESC
                 """,
-                (user_id,),
+                (user_id, user_id),
             )
             rows = cur.fetchall() or []
             cur.close()
@@ -661,14 +662,47 @@ IMPORTANT: Output Python code directly, without explanations, without descriptio
     )
 
 
+def _serialize_indicator_output(output: Dict[str, Any]) -> Dict[str, Any]:
+    """Convert indicator output (name, plots, signals) to JSON-serializable dict."""
+    if not output:
+        return None
+    result = {"name": str(output.get("name", "Indicator"))}
+    plots = output.get("plots") or []
+    result["plots"] = []
+    for p in plots:
+        if not isinstance(p, dict):
+            continue
+        plot = dict(p)
+        if "data" in plot and hasattr(plot["data"], "tolist"):
+            plot["data"] = plot["data"].tolist()
+        elif isinstance(plot.get("data"), list):
+            plot["data"] = [float(x) if isinstance(x, (np.floating, np.integer)) else x for x in plot["data"]]
+        result["plots"].append(plot)
+    signals = output.get("signals") or []
+    result["signals"] = []
+    for s in signals:
+        if not isinstance(s, dict):
+            continue
+        sig = dict(s)
+        if "data" in sig and hasattr(sig["data"], "tolist"):
+            sig["data"] = sig["data"].tolist()
+        elif isinstance(sig.get("data"), list):
+            sig["data"] = [
+                float(x) if x is not None and isinstance(x, (np.floating, np.integer)) else x
+                for x in sig["data"]
+            ]
+        result["signals"].append(sig)
+    return result
+
+
 @indicator_bp.route("/callIndicator", methods=["POST"])
 @login_required
 def call_indicator():
     """
-    Call another indicator (for frontend Pyodide).
+    Call another indicator (for frontend chart / execute).
 
     Body: indicatorRef (int|str), klineData, params, currentIndicatorId.
-    Returns: { code, data: { df, columns } }.
+    Returns: { code, data: { df, columns, output? } }. output has name, plots, signals for chart.
     """
     try:
         data = request.get_json() or {}
@@ -703,15 +737,20 @@ def call_indicator():
         df['low'] = df['low'].astype('float64')
         df['close'] = df['close'].astype('float64')
         df['volume'] = df['volume'].astype('float64')
-        result_df = indicator_caller.call_indicator(indicator_ref, df, params)
+        result_df, output = indicator_caller.call_indicator(indicator_ref, df, params)
         result_dict = result_df.to_dict(orient='records')
+        # Serialize output for frontend chart (name, plots, signals)
+        output_payload = None
+        if output is not None and isinstance(output, dict):
+            output_payload = _serialize_indicator_output(output)
         
         return jsonify({
             "code": 1,
             "msg": "success",
             "data": {
                 "df": result_dict,
-                "columns": list(result_df.columns)
+                "columns": list(result_df.columns),
+                "output": output_payload
             }
         })
         

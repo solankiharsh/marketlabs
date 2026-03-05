@@ -3,14 +3,51 @@
 import { useEffect, useState, useCallback } from 'react';
 import Link from 'next/link';
 import { Plus, RefreshCw, ChevronDown, ChevronRight, Info, ShoppingBag, Building2, Play, Pencil, Trash2, BarChart2, History, Lock } from 'lucide-react';
-import { getIndicators, executeIndicator, deleteIndicator } from '@/lib/api';
-import type { IndicatorItem, ExecuteIndicatorOutput } from '@/lib/api';
+import { getIndicators, getIndicatorParams, executeIndicatorWithKline } from '@/lib/api';
+
+const HIDDEN_IDS_KEY = 'indicator-analysis-hidden-ids';
+
+function getHiddenIds(): Set<number> {
+  if (typeof window === 'undefined') return new Set();
+  try {
+    const raw = localStorage.getItem(HIDDEN_IDS_KEY);
+    const arr = raw ? JSON.parse(raw) : [];
+    return new Set(Array.isArray(arr) ? arr.map(Number).filter((n) => !Number.isNaN(n)) : []);
+  } catch {
+    return new Set();
+  }
+}
+
+function addHiddenId(id: number): void {
+  const set = getHiddenIds();
+  set.add(id);
+  try {
+    localStorage.setItem(HIDDEN_IDS_KEY, JSON.stringify([...set]));
+  } catch {}
+}
+import type { IndicatorItem, ExecuteIndicatorOutput, IndicatorParamDef } from '@/lib/api';
+import { fetchOHLCV } from '@/lib/chart-data';
+import { IndicatorParametersModal } from './IndicatorParametersModal';
+
+/** Map UI timeframe to chart-data period (1D -> d, 1H -> 1h, etc.) */
+const TIMEFRAME_TO_PERIOD: Record<string, string> = {
+  '1m': '1m',
+  '5m': '5m',
+  '15m': '15m',
+  '30m': '30m',
+  '1H': '1h',
+  '4H': '4h',
+  '1D': 'd',
+  '1W': 'w',
+};
 
 interface TechnicalIndicatorsSidebarProps {
   market: string;
   symbol: string;
   timeframe: string;
-  onExecuteIndicator?: (output: ExecuteIndicatorOutput) => void;
+  activeIndicatorId?: number | null;
+  onExecuteIndicator?: (output: ExecuteIndicatorOutput, indicator?: IndicatorItem) => void;
+  onStopIndicator?: () => void;
   onBacktestClick?: (indicator: IndicatorItem) => void;
   onOpenCreateIndicator?: () => void;
   refreshTrigger?: number;
@@ -20,7 +57,9 @@ export function TechnicalIndicatorsSidebar({
   market,
   symbol,
   timeframe,
+  activeIndicatorId = null,
   onExecuteIndicator,
+  onStopIndicator,
   onBacktestClick,
   onOpenCreateIndicator,
   refreshTrigger,
@@ -30,6 +69,10 @@ export function TechnicalIndicatorsSidebar({
   const [createdOpen, setCreatedOpen] = useState(true);
   const [purchasedOpen, setPurchasedOpen] = useState(true);
   const [executingId, setExecutingId] = useState<number | null>(null);
+  const [paramsModalOpen, setParamsModalOpen] = useState(false);
+  const [paramsModalIndicator, setParamsModalIndicator] = useState<IndicatorItem | null>(null);
+  const [paramsModalDefs, setParamsModalDefs] = useState<IndicatorParamDef[]>([]);
+  const [hiddenIds, setHiddenIds] = useState<Set<number>>(() => getHiddenIds());
 
   const refreshIndicators = useCallback(() => {
     setLoading(true);
@@ -39,36 +82,71 @@ export function TechnicalIndicatorsSidebar({
       .finally(() => setLoading(false));
   }, []);
 
-  const handlePlay = useCallback(
-    async (ind: IndicatorItem) => {
-      const code = ind.code as string | undefined;
-      if (!code?.trim() || !onExecuteIndicator) return;
-      setExecutingId(ind.id as number);
+  const runIndicatorExecution = useCallback(
+    async (ind: IndicatorItem, params: Record<string, number | string | boolean>) => {
+      if (!onExecuteIndicator) return;
+      const period = TIMEFRAME_TO_PERIOD[timeframe] ?? 'd';
       try {
-        const { output } = await executeIndicator(code, symbol, timeframe);
-        onExecuteIndicator(output);
+        const klines = await fetchOHLCV(market, symbol, period, 300);
+        const klineData = klines.map((c) => ({
+          open: c.open,
+          high: c.high,
+          low: c.low,
+          close: c.close,
+          volume: (c as { volume?: number }).volume ?? 0,
+        }));
+        const { output } = await executeIndicatorWithKline(ind.id as number, klineData, params);
+        onExecuteIndicator(output, ind);
       } catch {
         // ignore
       } finally {
         setExecutingId(null);
       }
     },
-    [symbol, timeframe, onExecuteIndicator]
+    [market, symbol, timeframe, onExecuteIndicator]
   );
 
-  const handleDelete = useCallback(
-    async (id: number) => {
-      if (!confirm('Delete this indicator?')) return;
+  const handlePlay = useCallback(
+    async (ind: IndicatorItem) => {
+      if (!onExecuteIndicator) return;
+      setExecutingId(ind.id as number);
       try {
-        await deleteIndicator(id);
-        refreshIndicators();
-      } catch {}
+        const paramDefs = await getIndicatorParams(ind.id as number);
+        if (paramDefs.length > 0) {
+          setParamsModalIndicator(ind);
+          setParamsModalDefs(paramDefs);
+          setParamsModalOpen(true);
+          setExecutingId(null);
+          return;
+        }
+        await runIndicatorExecution(ind, {});
+      } catch {
+        setExecutingId(null);
+      }
     },
-    [refreshIndicators]
+    [onExecuteIndicator, runIndicatorExecution]
   );
 
-  const created = indicators.filter((i) => (i.is_buy as number) === 0);
-  const purchased = indicators.filter((i) => (i.is_buy as number) === 1);
+  const handleParamsConfirm = useCallback(
+    (values: Record<string, number | string | boolean>) => {
+      if (!paramsModalIndicator) return;
+      setParamsModalOpen(false);
+      setExecutingId(paramsModalIndicator.id as number);
+      runIndicatorExecution(paramsModalIndicator, values);
+      setParamsModalIndicator(null);
+      setParamsModalDefs([]);
+    },
+    [paramsModalIndicator, runIndicatorExecution]
+  );
+
+  const handleRemoveFromPage = useCallback((id: number) => {
+    if (!confirm('Remove from this page only? The indicator will stay in Indicator Market and in your account.')) return;
+    addHiddenId(id);
+    setHiddenIds(getHiddenIds());
+  }, []);
+
+  const created = indicators.filter((i) => (i.is_buy as number) === 0 && !hiddenIds.has(Number(i.id)));
+  const purchased = indicators.filter((i) => (i.is_buy as number) === 1 && !hiddenIds.has(Number(i.id)));
 
   useEffect(() => {
     refreshIndicators();
@@ -137,41 +215,75 @@ export function TechnicalIndicatorsSidebar({
                 </div>
               ) : (
                 <ul className="space-y-2">
-                  {created.map((ind) => (
-                    <li
-                      key={ind.id}
-                      className="rounded border border-border bg-bg-secondary/50 p-2 transition-all duration-200"
-                    >
-                      <div className="font-medium text-sm text-text-primary truncate">{ind.name || 'Unnamed'}</div>
-                      <div className="text-xs text-text-muted truncate">{ind.description || '—'}</div>
-                      <div className="flex items-center gap-1 mt-2">
-                        <button
-                          type="button"
-                          onClick={() => handlePlay(ind)}
-                          disabled={executingId === (ind.id as number)}
-                          className="p-1.5 rounded text-text-muted hover:bg-bg-elevated hover:text-accent-primary"
-                          title="Run on chart"
-                        >
-                          <Play className="w-3.5 h-3.5" />
-                        </button>
-                        <Link
-                          href={`/indicators/editor?id=${ind.id}`}
-                          className="p-1.5 rounded text-text-muted hover:bg-bg-elevated hover:text-accent-primary"
-                          title="Edit"
-                        >
-                          <Pencil className="w-3.5 h-3.5" />
-                        </Link>
-                        <button
-                          type="button"
-                          onClick={() => handleDelete(ind.id as number)}
-                          className="p-1.5 rounded text-text-muted hover:bg-bg-elevated hover:text-error"
-                          title="Delete"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
-                      </div>
-                    </li>
-                  ))}
+                  {created.map((ind) => {
+                    const isActive = activeIndicatorId === (ind.id as number);
+                    return (
+                      <li
+                        key={ind.id}
+                        className={`rounded border p-2 transition-all duration-200 ${
+                          isActive ? 'border-accent-primary/50 bg-accent-primary/10' : 'border-border bg-bg-secondary/50'
+                        }`}
+                      >
+                        <div className="font-medium text-sm text-text-primary truncate">{ind.name || 'Unnamed'}</div>
+                        <div className="text-xs text-text-muted truncate">{ind.description || '—'}</div>
+                        <div className="flex items-center gap-1 mt-2">
+                          {isActive ? (
+                            <button
+                              type="button"
+                              onClick={onStopIndicator}
+                              className="px-2 py-1 rounded text-xs font-medium bg-red-500/20 text-red-400 hover:bg-red-500/30"
+                              title="Stop indicator"
+                            >
+                              Stop
+                            </button>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={() => handlePlay(ind)}
+                              disabled={executingId === (ind.id as number)}
+                              className="p-1.5 rounded text-text-muted hover:bg-bg-elevated hover:text-accent-primary"
+                              title="Start indicator on chart"
+                            >
+                              <Play className="w-3.5 h-3.5" />
+                            </button>
+                          )}
+                          {onBacktestClick && (
+                            <button
+                              type="button"
+                              onClick={() => onBacktestClick(ind)}
+                              className="p-1.5 rounded text-text-muted hover:bg-bg-elevated hover:text-accent-primary"
+                              title="Start indicator backtest"
+                            >
+                              <BarChart2 className="w-3.5 h-3.5" />
+                            </button>
+                          )}
+                          <button
+                            type="button"
+                            onClick={() => onBacktestClick?.(ind)}
+                            className="p-1.5 rounded text-text-muted hover:bg-bg-elevated hover:text-accent-primary"
+                            title="Backtest history"
+                          >
+                            <History className="w-3.5 h-3.5" />
+                          </button>
+                          <Link
+                            href={`/indicators/editor?id=${ind.id}`}
+                            className="p-1.5 rounded text-text-muted hover:bg-bg-elevated hover:text-accent-primary"
+                            title="Edit"
+                          >
+                            <Pencil className="w-3.5 h-3.5" />
+                          </Link>
+                          <button
+                            type="button"
+                            onClick={() => handleRemoveFromPage(ind.id as number)}
+                            className="p-1.5 rounded text-text-muted hover:bg-bg-elevated hover:text-error"
+                            title="Remove from this page (still in Indicator Market)"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      </li>
+                    );
+                  })}
                 </ul>
               )}
             </div>
@@ -212,52 +324,82 @@ export function TechnicalIndicatorsSidebar({
               )}
               {purchased.length > 0 && (
                 <ul className="space-y-2">
-                  {purchased.map((ind) => (
-                    <li
-                      key={ind.id}
-                      className="rounded border border-accent-primary/20 bg-bg-secondary/50 p-2 transition-all duration-200"
-                    >
-                      <div className="flex items-center gap-1">
-                        <Lock className="w-3.5 h-3.5 text-accent-primary shrink-0" />
-                        <span className="font-medium text-sm text-accent-primary truncate">{ind.name || 'Unnamed'}</span>
-                      </div>
-                      <div className="text-xs text-text-muted truncate mt-0.5">{ind.description || '—'}</div>
-                      <div className="flex items-center gap-1 mt-2">
-                        <button
-                          type="button"
-                          onClick={() => handlePlay(ind)}
-                          disabled={executingId === (ind.id as number)}
-                          className="p-1.5 rounded text-text-muted hover:bg-bg-elevated hover:text-accent-primary"
-                          title="Run on chart"
-                        >
-                          <Play className="w-3.5 h-3.5" />
-                        </button>
-                        {onBacktestClick && (
+                  {purchased.map((ind) => {
+                    const isActive = activeIndicatorId === (ind.id as number);
+                    return (
+                      <li
+                        key={ind.id}
+                        className={`rounded border p-2 transition-all duration-200 ${
+                          isActive ? 'border-accent-primary/50 bg-accent-primary/10' : 'border-accent-primary/20 bg-bg-secondary/50'
+                        }`}
+                      >
+                        <div className="flex items-center gap-1">
+                          <Lock className="w-3.5 h-3.5 text-accent-primary shrink-0" />
+                          <span className="font-medium text-sm text-accent-primary truncate">{ind.name || 'Unnamed'}</span>
+                        </div>
+                        <div className="text-xs text-text-muted truncate mt-0.5">{ind.description || '—'}</div>
+                        <div className="flex items-center gap-1 mt-2">
+                          {isActive ? (
+                            <button
+                              type="button"
+                              onClick={onStopIndicator}
+                              className="px-2 py-1 rounded text-xs font-medium bg-red-500/20 text-red-400 hover:bg-red-500/30"
+                              title="Stop indicator"
+                            >
+                              Stop
+                            </button>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={() => handlePlay(ind)}
+                              disabled={executingId === (ind.id as number)}
+                              className="p-1.5 rounded text-text-muted hover:bg-bg-elevated hover:text-accent-primary"
+                              title="Start indicator on chart"
+                            >
+                              <Play className="w-3.5 h-3.5" />
+                            </button>
+                          )}
+                          {onBacktestClick && (
+                            <button
+                              type="button"
+                              onClick={() => onBacktestClick(ind)}
+                              className="p-1.5 rounded text-text-muted hover:bg-bg-elevated hover:text-accent-primary"
+                              title="Start indicator backtest"
+                            >
+                              <BarChart2 className="w-3.5 h-3.5" />
+                            </button>
+                          )}
                           <button
                             type="button"
-                            onClick={() => onBacktestClick(ind)}
+                            onClick={() => onBacktestClick?.(ind)}
                             className="p-1.5 rounded text-text-muted hover:bg-bg-elevated hover:text-accent-primary"
-                            title="Indicator Backtest"
+                            title="Backtest history"
                           >
-                            <BarChart2 className="w-3.5 h-3.5" />
+                            <History className="w-3.5 h-3.5" />
                           </button>
-                        )}
-                        <button
-                          type="button"
-                          className="p-1.5 rounded text-text-muted hover:bg-bg-elevated hover:text-accent-primary"
-                          title="History"
-                        >
-                          <History className="w-3.5 h-3.5" />
-                        </button>
-                      </div>
-                    </li>
-                  ))}
+                        </div>
+                      </li>
+                    );
+                  })}
                 </ul>
               )}
             </div>
           </div>
         </section>
       </div>
+
+      <IndicatorParametersModal
+        open={paramsModalOpen}
+        onClose={() => {
+          setParamsModalOpen(false);
+          setParamsModalIndicator(null);
+          setParamsModalDefs([]);
+        }}
+        indicator={paramsModalIndicator}
+        paramDefs={paramsModalDefs}
+        onConfirm={handleParamsConfirm}
+        loading={executingId !== null}
+      />
     </div>
   );
 }

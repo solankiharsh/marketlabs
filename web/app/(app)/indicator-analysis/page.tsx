@@ -21,6 +21,7 @@ export default function IndicatorAnalysisPage() {
   const [quickTradeOpen, setQuickTradeOpen] = useState(false);
   const [addWatchlistModalOpen, setAddWatchlistModalOpen] = useState(false);
   const [executedIndicatorOutput, setExecutedIndicatorOutput] = useState<ExecuteIndicatorOutput | null>(null);
+  const [activeIndicatorId, setActiveIndicatorId] = useState<number | null>(null);
   const [backtestModalIndicator, setBacktestModalIndicator] = useState<IndicatorItem | null>(null);
   const [createIndicatorOverlayOpen, setCreateIndicatorOverlayOpen] = useState(false);
   const [sidebarRefreshTrigger, setSidebarRefreshTrigger] = useState(0);
@@ -28,6 +29,16 @@ export default function IndicatorAnalysisPage() {
   const [priceData, setPriceData] = useState<{ price?: number; changePercent?: number }>({});
 
   const { add: watchlistAdd, entries: watchlistEntries, getPrice: getWatchlistPrice } = useWatchlist();
+
+  const handleExecuteIndicator = useCallback((output: ExecuteIndicatorOutput, indicator?: IndicatorItem) => {
+    setExecutedIndicatorOutput(output);
+    setActiveIndicatorId(indicator?.id ?? null);
+  }, []);
+
+  const handleStopIndicator = useCallback(() => {
+    setExecutedIndicatorOutput(null);
+    setActiveIndicatorId(null);
+  }, []);
 
   const handleAddToWatchlistConfirm = useCallback(
     (m: string, s: string, name?: string) => {
@@ -100,6 +111,7 @@ export default function IndicatorAnalysisPage() {
             onTimeframeChange={setTimeframe}
             onAddToWatchlist={() => setAddWatchlistModalOpen(true)}
             onPriceUpdate={setPriceData}
+            indicatorOutput={executedIndicatorOutput}
           />
         </div>
         <div className="w-[300px] shrink-0">
@@ -107,7 +119,9 @@ export default function IndicatorAnalysisPage() {
             market={market}
             symbol={symbol}
             timeframe={timeframe}
-            onExecuteIndicator={setExecutedIndicatorOutput}
+            activeIndicatorId={activeIndicatorId}
+            onExecuteIndicator={handleExecuteIndicator}
+            onStopIndicator={handleStopIndicator}
             onBacktestClick={(ind) => setBacktestModalIndicator(ind)}
             onOpenCreateIndicator={() => setCreateIndicatorOverlayOpen(true)}
             refreshTrigger={sidebarRefreshTrigger}

@@ -1,13 +1,45 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
+import Link from 'next/link';
 import { Search, ShoppingBag } from 'lucide-react';
 import {
   getMarketplaceIndicators,
   getMarketplacePurchases,
   purchaseMarketplaceIndicator,
 } from '@/lib/api';
+import {
+  getCommunityIndicators,
+  getCommunityMyPurchases,
+  purchaseCommunityIndicator,
+  type MyPurchaseItem,
+} from '@/lib/api/community';
 import type { MarketplaceIndicator } from '@/lib/api';
+
+/** Map backend community item to MarketplaceIndicator for the UI */
+function toMarketplaceItem(item: {
+  id: number;
+  name: string;
+  description?: string;
+  author?: { username?: string; nickname?: string };
+  price?: number;
+  purchase_count?: number;
+  view_count?: number;
+  avg_rating?: number;
+  is_purchased?: boolean;
+  [key: string]: unknown;
+}): MarketplaceIndicator {
+  return {
+    id: String(item.id),
+    name: item.name ?? '',
+    description: (item.description ?? '').slice(0, 300),
+    author: item.author?.nickname || item.author?.username || 'Community',
+    priceCredits: Number(item.price) ?? 0,
+    downloads: item.purchase_count ?? 0,
+    views: item.view_count ?? 0,
+    rating: item.avg_rating ?? undefined,
+  };
+}
 
 type FilterType = 'all' | 'free' | 'paid';
 type SortType = 'newest' | 'popular' | 'rating' | 'price';
@@ -20,10 +52,48 @@ export default function IndicatorMarketPage() {
   const [purchasedIds, setPurchasedIds] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(true);
   const [myPurchasesOnly, setMyPurchasesOnly] = useState(false);
+  const [useBackend, setUseBackend] = useState(true);
 
   const fetchItems = useCallback(async () => {
     setLoading(true);
     try {
+      if (useBackend) {
+        try {
+          if (myPurchasesOnly) {
+            const res = await getCommunityMyPurchases({ page: 1, page_size: 50 });
+            const raw = res.items ?? [];
+            const list = raw.map((p: MyPurchaseItem) => {
+              const ind = p.indicator;
+              return {
+                id: String(ind?.id ?? p.indicator_id ?? ''),
+                name: ind?.name ?? 'Indicator',
+                description: (ind?.description ?? '').slice(0, 300),
+                author: 'Community',
+                priceCredits: Number(p.purchase_price ?? p.price) ?? 0,
+              };
+            }) as MarketplaceIndicator[];
+            setItems(list);
+            setPurchasedIds(new Set(list.map((i) => i.id)));
+          } else {
+            const res = await getCommunityIndicators({
+              keyword: search || undefined,
+              filter,
+              sort,
+              page: 1,
+              page_size: 50,
+            });
+            const list = (res.items ?? []).map(toMarketplaceItem);
+            setItems(list);
+            const ids = new Set(
+              (res.items ?? []).filter((i) => i.is_purchased).map((i) => String(i.id))
+            );
+            setPurchasedIds(ids);
+          }
+          return;
+        } catch {
+          setUseBackend(false);
+        }
+      }
       if (myPurchasesOnly) {
         const list = await getMarketplacePurchases();
         setItems(list);
@@ -42,13 +112,26 @@ export default function IndicatorMarketPage() {
     } finally {
       setLoading(false);
     }
-  }, [search, filter, sort, myPurchasesOnly]);
+  }, [search, filter, sort, myPurchasesOnly, useBackend]);
 
   useEffect(() => {
     fetchItems();
   }, [fetchItems]);
 
   const handlePurchase = async (id: string, priceCredits: number) => {
+    if (useBackend) {
+      try {
+        const numId = parseInt(id, 10);
+        if (!Number.isNaN(numId)) {
+          await purchaseCommunityIndicator(numId);
+          setPurchasedIds((prev) => new Set([...prev, id]));
+          fetchItems();
+          return;
+        }
+      } catch {
+        // fall through to local
+      }
+    }
     try {
       await purchaseMarketplaceIndicator(id, priceCredits);
       setPurchasedIds((prev) => new Set([...prev, id]));
@@ -149,7 +232,14 @@ export default function IndicatorMarketPage() {
                     <span>{item.rating != null ? item.rating : '—'} rating</span>
                     <span>{item.views ?? 0} views</span>
                   </div>
-                  {!isPurchased && (
+                  {isPurchased || item.priceCredits === 0 ? (
+                    <Link
+                      href="/indicator-analysis"
+                      className="mt-3 w-full py-2 rounded-lg bg-accent-primary/20 border border-accent-primary/40 text-accent-primary text-sm font-medium text-center block"
+                    >
+                      Use Now
+                    </Link>
+                  ) : (
                     <button
                       type="button"
                       onClick={() => handlePurchase(item.id, item.priceCredits)}

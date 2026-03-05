@@ -1,6 +1,8 @@
 /** @type {import('next').NextConfig} */
 // Single backend (Zing Flask). For local dev: http://localhost:5000
 // For Railway: set NEXT_PUBLIC_API_URL to your backend service URL (no trailing slash)
+// If you see "Failed to proxy ... ECONNRESET" or "socket hang up", the backend is not running:
+//   From repo root run: make dev   (starts backend + web)  OR  make dev-backend  (then in another terminal: make dev-web)
 const apiUrl = (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000').replace(/\/+$/, '');
 
 const isCapacitorBuild = process.env.CAPACITOR_BUILD === '1';

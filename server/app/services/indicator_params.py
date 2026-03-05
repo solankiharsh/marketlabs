@@ -149,16 +149,16 @@ class IndicatorCaller:
         
         if _depth >= self.MAX_CALL_DEPTH:
             logger.error(f"Indicator call depth exceeded {self.MAX_CALL_DEPTH}")
-            return df.copy()
+            return df.copy(), None
         
         indicator_code, indicator_id = self._get_indicator_code(indicator_ref)
         if not indicator_code:
             logger.warning(f"Indicator not found: {indicator_ref}")
-            return df.copy()
+            return df.copy(), None
 
         if indicator_id in self._call_stack:
             logger.error(f"Circular dependency detected: {self._call_stack} -> {indicator_id}")
-            return df.copy()
+            return df.copy(), None
         
         self._call_stack.append(indicator_id)
         
@@ -169,6 +169,7 @@ class IndicatorCaller:
             df_copy = df.copy()
             local_vars = {
                 'df': df_copy,
+                'output': None,
                 'open': df_copy['open'].astype('float64') if 'open' in df_copy.columns else pd.Series(dtype='float64'),
                 'high': df_copy['high'].astype('float64') if 'high' in df_copy.columns else pd.Series(dtype='float64'),
                 'low': df_copy['low'].astype('float64') if 'low' in df_copy.columns else pd.Series(dtype='float64'),
@@ -203,11 +204,13 @@ class IndicatorCaller:
             exec(pre_import, exec_env)
             exec(indicator_code, exec_env)
             
-            return exec_env.get('df', df_copy)
+            result_df = exec_env.get('df', df_copy)
+            output = exec_env.get('output')
+            return result_df, output
             
         except Exception as e:
             logger.error(f"Error calling indicator {indicator_ref}: {e}")
-            return df.copy()
+            return df.copy(), None
         finally:
             self._call_stack.pop()
     
