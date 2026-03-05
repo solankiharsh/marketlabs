@@ -202,16 +202,21 @@ def create_app(config_name='default'):
     
     setup_logger()
     
-    # Initialize database and ensure admin user exists
-    try:
-        from app.utils.db import init_database, get_db_type
-        logger.debug(f"Database type: {get_db_type()}")
-        init_database()
-        # Ensure admin user exists (multi-user mode)
-        from app.services.user_service import get_user_service
-        get_user_service().ensure_admin_exists()
-    except Exception as e:
-        logger.warning(f"Database initialization note: {e}")
+    # Defer DB init to a background thread so the app can bind and respond to
+    # /api/health immediately (avoids 502 "Application failed to respond" on Railway
+    # when Postgres is slow or cold-starting).
+    def _init_db_and_admin():
+        try:
+            from app.utils.db import init_database, get_db_type
+            logger.debug("Database type: %s", get_db_type())
+            init_database()
+            from app.services.user_service import get_user_service
+            get_user_service().ensure_admin_exists()
+        except Exception as e:
+            logger.warning("Database initialization note: %s", e)
+    import threading
+    _db_thread = threading.Thread(target=_init_db_and_admin, daemon=True)
+    _db_thread.start()
 
     # =====================================================
     # Demo Mode Middleware (Read-Only Mode)

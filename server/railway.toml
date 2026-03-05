@@ -1,7 +1,12 @@
 # Railway config when this service is deployed with Root Directory = server
+# Use Dockerfile so PORT binding and gunicorn CMD are consistent (avoids 502).
 
 [build]
-builder = "nixpacks"
+builder = "DOCKERFILE"
+dockerfilePath = "Dockerfile"
 
 [deploy]
-startCommand = "gunicorn -c gunicorn_config.py run:app"
+healthcheckPath = "/api/health"
+healthcheckTimeout = 120
+restartPolicyType = "ON_FAILURE"
+restartPolicyMaxRetries = 3

@@ -86,11 +86,20 @@ After that, Railpack will detect Python in `server/` and Node in `web/` and buil
 
 - **Use Gunicorn:** The repo **Dockerfile** now runs `gunicorn -c gunicorn_config.py run:app` so the app binds to `0.0.0.0:$PORT`. If you override the start command, use the same. Do **not** run only `python run.py` in production on Railway.
 - **Backend must listen on Railway's PORT:** Railway injects `PORT` (e.g. 5000). The app must bind to that port. In **Settings → Networking**, the **Port** shown for the backend (e.g. 5000) is where the proxy sends traffic; the app reads `PORT` and listens there. Do not set `PORT` in Variables (let Railway set it).
-- **If health returns 502 or curl gives 000 / TCP abort:** The container may be crashing on startup (check **Deploy Logs** for tracebacks) or the proxy port may not match. Ensure no custom start command overrides the Dockerfile CMD, and that **Root Directory** is `server`. Redeploy after pulling the latest code.
+- **If health returns 502 or curl gives 000 / TCP abort:** (1) The repo uses **`server/railway.toml`** to force **DOCKERFILE** builder so the Dockerfile CMD (gunicorn) is used and the app binds to `PORT`. Do not change the builder to Nixpacks unless you set the same start command and port behavior. (2) DB init runs in a background thread so the app can respond to `/api/health` before Postgres is ready; if the container was blocking on DB, redeploy after pulling. (3) Check **Deploy Logs** for tracebacks. **Root Directory** must be `server`.
+
+### Frontend shows 8080 in Deploy Logs but Settings shows Port 3000
+
+**What’s going on:** Deploy Logs show the port the app actually listens on (e.g. `Local: http://localhost:8080`). That comes from the `PORT` env var Railway injects (often 8080 for Node/Next.js). **Settings → Networking → Port** is the port Railway’s proxy forwards to. Those two must match or the proxy hits the wrong port and you get 502 or no response.
+
+**Fix (pick one):**
+
+1. **Use port 3000:** In the **frontend** service **Variables**, set `PORT=3000`. Redeploy. Next.js will listen on 3000; keep **Networking → Port** as 3000.
+2. **Use port 8080:** Leave Variables as-is (no `PORT`), and in **Settings → Networking** set the port to **8080** so it matches what the app uses (what you see in Deploy Logs).
 
 ### If you get 502 Bad Gateway on the web (build succeeds, app shows "Ready")
 
-- **Check target port:** In the **web** service go to **Settings → Networking → Public Networking**. Ensure the **port** your domain forwards to matches the port the app listens on. Railway usually sets `PORT` (e.g. 8080); the app uses it. If "Port" or "Target port" is wrong (e.g. 3000 while the app listens on 8080), change it to match `PORT` or **Generate Domain** again so it picks the right port.
+- **Check target port:** In the **web** service go to **Settings → Networking → Public Networking**. Ensure the **port** your domain forwards to matches the port the app listens on (see Deploy Logs: “Local: http://localhost:XXXX”). If you set a custom port in Variables (e.g. `PORT=3000`), Networking port must be the same; otherwise use the port Railway assigns (e.g. 8080).
 - **Bind to all interfaces:** The web app’s `npm start` runs `next start -H 0.0.0.0` so it listens on `0.0.0.0` (required for Railway’s proxy to reach it). If you use a custom start command, keep `-H 0.0.0.0`.
 - **Build-time env for Next.js:** Set `NEXT_PUBLIC_API_URL` in the service **Variables** (so it’s present at build). Redeploy after changing it.
 
