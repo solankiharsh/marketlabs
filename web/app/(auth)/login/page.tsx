@@ -7,7 +7,7 @@ import { BarChart3 } from 'lucide-react';
 import { useAuthStore } from '@/store/auth';
 import { getSecurityConfig, type SecurityConfig } from '@/lib/api';
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000';
+const API_URL = (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000').replace(/\/+$/, '');
 
 export default function LoginPage() {
   const router = useRouter();

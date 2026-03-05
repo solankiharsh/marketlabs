@@ -2,7 +2,7 @@
 
 import axios, { AxiosInstance, AxiosResponse } from 'axios';
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000';
+const API_URL = (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000').replace(/\/+$/, '');
 
 // In browser use same-origin so Next.js rewrites proxy /api/* to backend (avoids CORS and wrong-host 404s)
 const BASE_URL =

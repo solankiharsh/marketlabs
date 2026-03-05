@@ -1,7 +1,7 @@
 /** @type {import('next').NextConfig} */
 // Single backend (Zing Flask). For local dev: http://localhost:5000
-// For Railway: set NEXT_PUBLIC_API_URL to your backend service URL (e.g. https://your-backend.up.railway.app)
-const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000';
+// For Railway: set NEXT_PUBLIC_API_URL to your backend service URL (no trailing slash)
+const apiUrl = (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000').replace(/\/+$/, '');
 
 const isCapacitorBuild = process.env.CAPACITOR_BUILD === '1';
 

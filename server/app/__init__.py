@@ -205,9 +205,8 @@ def create_app(config_name='default'):
     # Initialize database and ensure admin user exists
     try:
         from app.utils.db import init_database, get_db_type
-        logger.info(f"Database type: {get_db_type()}")
+        logger.debug(f"Database type: {get_db_type()}")
         init_database()
-        
         # Ensure admin user exists (multi-user mode)
         from app.services.user_service import get_user_service
         get_user_service().ensure_admin_exists()

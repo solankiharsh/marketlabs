@@ -32,6 +32,11 @@ _pool_failed: bool = False
 _pool_failed_at: Optional[float] = None
 # Cooldown in seconds before allowing one retry
 _POOL_RETRY_COOLDOWN = 60
+# Retry pool creation this many times on timeout/connection errors (e.g. Railway cold start)
+_POOL_CREATE_RETRIES = 3
+_POOL_CREATE_RETRY_DELAY = 3
+# Connection timeout (Railway internal network can be slow on cold start)
+_POOL_CONNECT_TIMEOUT = 30
 
 
 def _get_database_url() -> str:
@@ -120,29 +125,45 @@ def _get_connection_pool():
         if not params:
             raise RuntimeError(f"Invalid DATABASE_URL format: {db_url}")
 
-        try:
-            _connection_pool = pool.ThreadedConnectionPool(
-                minconn=2,
-                maxconn=20,
-                host=params.get('host', 'localhost'),
-                port=params.get('port', 5432),
-                user=params.get('user', 'zing'),
-                password=params.get('password', ''),
-                dbname=params.get('dbname', 'zing'),
-                connect_timeout=10,
-            )
-            logger.info(f"PostgreSQL connection pool created: {params.get('host')}:{params.get('port')}/{params.get('dbname')}")
-        except Exception as e:
-            _pool_failed = True
-            _pool_failed_at = time.time()
-            logger.error(
-                "Failed to create PostgreSQL connection pool: %s. "
-                "If using local Postgres, create the role: create role zing with login password 'yourpassword'; create database zing owner zing;",
-                e,
-            )
-            raise
+        params["connect_timeout"] = _POOL_CONNECT_TIMEOUT
+        last_error = None
+        for attempt in range(1, _POOL_CREATE_RETRIES + 1):
+            try:
+                _connection_pool = pool.ThreadedConnectionPool(
+                    minconn=2,
+                    maxconn=20,
+                    host=params.get('host', 'localhost'),
+                    port=params.get('port', 5432),
+                    user=params.get('user', 'zing'),
+                    password=params.get('password', ''),
+                    dbname=params.get('dbname', 'zing'),
+                    connect_timeout=params["connect_timeout"],
+                )
+                logger.info(
+                    "PostgreSQL connection pool created: %s:%s/%s",
+                    params.get('host'), params.get('port'), params.get('dbname'),
+                )
+                return _connection_pool
+            except Exception as e:
+                last_error = e
+                _connection_pool = None
+                if attempt < _POOL_CREATE_RETRIES:
+                    logger.warning(
+                        "PostgreSQL pool attempt %s/%s failed (%s), retrying in %ss...",
+                        attempt, _POOL_CREATE_RETRIES, e, _POOL_CREATE_RETRY_DELAY,
+                    )
+                    time.sleep(_POOL_CREATE_RETRY_DELAY)
+                else:
+                    break
 
-        return _connection_pool
+        _pool_failed = True
+        _pool_failed_at = time.time()
+        logger.error(
+            "Failed to create PostgreSQL connection pool after %s attempts: %s. "
+            "If using local Postgres, create the role: create role zing with login password 'yourpassword'; create database zing owner zing;",
+            _POOL_CREATE_RETRIES, last_error,
+        )
+        raise last_error
 
 
 class PostgresCursor:
