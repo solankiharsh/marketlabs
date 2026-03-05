@@ -1,0 +1,7 @@
+# Railway config when this service is deployed with Root Directory = server
+
+[build]
+builder = "nixpacks"
+
+[deploy]
+startCommand = "gunicorn -c gunicorn_config.py run:app"

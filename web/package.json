@@ -1,7 +1,7 @@
 {
   "name": "zing-web",
   "version": "0.1.0",
-  "description": "QuantDinger Web UI - AI-Native Quantitative Trading Platform",
+  "description": "Zing Web UI - AI-Native Quantitative Trading Platform",
   "main": "index.js",
   "scripts": {
     "dev": "next dev",

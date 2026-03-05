@@ -2,6 +2,29 @@
 
 This guide covers deploying the Zing monorepo (Python backend + Next.js web) to Railway as **two services**.
 
+---
+
+## ⚠️ "Railpack could not determine how to build" / "Script start.sh not found"
+
+**You are deploying from the repo root.** This repo is a **monorepo** (it has both `server/` and `web/`). Railway/Railpack cannot build from the root because it doesn’t know which app to run.
+
+**Fix:** Use **two separate Railway services** and set **Root Directory** for each:
+
+| Service   | Root Directory |
+|-----------|----------------|
+| Backend   | `server`       |
+| Frontend  | `web`          |
+
+**Steps:**
+
+1. In your Railway project, **do not** use a single service that builds from the repo root.
+2. **Backend:** Add a service (or reconfigure the existing one) → **Settings** → **Root Directory** → set to **`server`** (no trailing slash). Redeploy.
+3. **Frontend:** Add a **second** service → connect the **same** GitHub repo → **Settings** → **Root Directory** → set to **`web`**. Add variable `NEXT_PUBLIC_API_URL` = your backend URL. Deploy.
+
+After that, Railpack will detect Python in `server/` and Node in `web/` and build each service correctly.
+
+---
+
 ## Prerequisites
 
 - [Railway](https://railway.app) account

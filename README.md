@@ -68,7 +68,7 @@ make dev
 
 You need a running PostgreSQL instance and `DATABASE_URL` in `server/.env`. If you prefer to run Postgres in Docker, use `make postgres-up` in another terminal, then `make dev-backend` and `make dev-web`.
 
-**Deploy to Railway:** See [docs/RAILWAY_DEPLOY.md](docs/RAILWAY_DEPLOY.md) for a two-service setup (backend + frontend).
+**Deploy to Railway:** This is a monorepo — create **two** Railway services and set **Root Directory** to `server` (backend) and `web` (frontend). See [docs/RAILWAY_DEPLOY.md](docs/RAILWAY_DEPLOY.md). If you see "Railpack could not determine how to build", set Root Directory and redeploy.
 
 <details>
 <summary><b>📝 Key settings in server/.env</b></summary>

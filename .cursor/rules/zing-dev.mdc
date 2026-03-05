@@ -1,10 +1,10 @@
 ---
-description: How to run QuantDinger backend and web together for local development
+description: How to run zing backend and web together for local development
 globs: 
 alwaysApply: true
 ---
 
-# QuantDinger local development
+# Zing local development
 
 ## Run both backend and web (one command)
 
