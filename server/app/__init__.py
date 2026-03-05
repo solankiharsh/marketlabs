@@ -137,9 +137,17 @@ def restore_running_strategies():
         return
     try:
         from app.services.strategy import StrategyService
-        
+
         strategy_service = StrategyService()
-        trading_executor = get_trading_executor()
+        try:
+            trading_executor = get_trading_executor()
+        except (ImportError, ModuleNotFoundError) as e:
+            logger.info(
+                "Strategy restore skipped: trading executor (ccxt) unavailable: %s. "
+                "Set DISABLE_RESTORE_RUNNING_STRATEGIES=true to hide this.",
+                e,
+            )
+            return
         
         running_strategies = strategy_service.get_running_strategies_with_type()
         
@@ -178,7 +186,9 @@ def restore_running_strategies():
                 logger.error(traceback.format_exc())
         
         logger.info(f"Strategy restore completed: {restored_count}/{len(running_strategies)} restored")
-        
+
+    except (ImportError, ModuleNotFoundError) as e:
+        logger.info("Strategy restore skipped (missing dependency): %s", e)
     except Exception as e:
         logger.error(f"Failed to restore running strategies: {str(e)}")
         logger.error(traceback.format_exc())
