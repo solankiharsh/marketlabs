@@ -126,12 +126,15 @@ def _get_connection_pool():
             raise RuntimeError(f"Invalid DATABASE_URL format: {db_url}")
 
         params["connect_timeout"] = _POOL_CONNECT_TIMEOUT
+        # Limit pool size in production to avoid exhaustion (e.g. Railway)
+        _maxconn = int(os.getenv('DB_POOL_MAX_CONNECTIONS', '10'))
+        _maxconn = max(2, min(_maxconn, 20))
         last_error = None
         for attempt in range(1, _POOL_CREATE_RETRIES + 1):
             try:
                 _connection_pool = pool.ThreadedConnectionPool(
-                    minconn=2,
-                    maxconn=20,
+                    minconn=1,
+                    maxconn=_maxconn,
                     host=params.get('host', 'localhost'),
                     port=params.get('port', 5432),
                     user=params.get('user', 'zing'),
@@ -140,8 +143,8 @@ def _get_connection_pool():
                     connect_timeout=params["connect_timeout"],
                 )
                 logger.info(
-                    "PostgreSQL connection pool created: %s:%s/%s",
-                    params.get('host'), params.get('port'), params.get('dbname'),
+                    "PostgreSQL connection pool created: %s:%s/%s (maxconn=%s)",
+                    params.get('host'), params.get('port'), params.get('dbname'), _maxconn,
                 )
                 return _connection_pool
             except Exception as e:

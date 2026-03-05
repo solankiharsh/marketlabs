@@ -197,8 +197,15 @@ def create_app(config_name='default'):
     app = Flask(__name__)
     
     app.config['JSON_AS_ASCII'] = False
-    
-    CORS(app)
+
+    # CORS: use CORS_ORIGINS env (e.g. https://marketlabs-production.up.railway.app or * for dev)
+    from app.config.settings import Config
+    _origins = Config.CORS_ORIGINS
+    if _origins and str(_origins).strip() == '*':
+        CORS(app)
+    else:
+        _list = [x.strip() for x in str(_origins or '').split(',') if x.strip()]
+        CORS(app, origins=_list if _list else None)
     
     setup_logger()
     

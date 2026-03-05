@@ -243,18 +243,37 @@ Run migrations if needed (e.g. run `server` migrations against this DB once; see
 
 ## 5. CORS (if needed)
 
-If the frontend domain is different from the backend (e.g. `app.railway.app` vs `api.railway.app`), ensure the backend allows the frontend origin:
+If the frontend domain is different from the backend (e.g. `app.railway.app` vs `api.railway.app`), the backend must allow the frontend origin or you get **502 / CORS errors**.
 
-- In Flask, set `CORS_ORIGINS` or equivalent to your frontend URL (e.g. `https://zing-web.up.railway.app`).
-- Check `server` for CORS configuration and add your Railway frontend URL.
+- In the **backend** service **Variables**, set **CORS_ORIGINS** to your frontend URL(s), comma-separated if multiple, e.g.:
+  - `https://marketlabs-production.up.railway.app`
+  - Or for dev: `*` (allows any origin; avoid in production).
+- The app uses this list when initializing CORS; missing frontend URL is a common cause of 502 when the browser blocks the response.
 
 ---
 
-## 6. Summary
+## 6. Railway variables checklist
+
+Set these in each service’s **Variables** so the app and proxy match. Replace placeholder URLs with your real Railway service URLs.
+
+| Service (example name) | Variable | Value |
+|------------------------|----------|--------|
+| **Backend** (e.g. zestful-laughter) | `PORT` | `5000` (or leave unset and set **Networking → Port** to whatever Railway injects) |
+| **Backend** | `CORS_ORIGINS` | `https://marketlabs-production.up.railway.app` (your frontend URL) or `*` for dev |
+| **Backend** | `JWT_SECRET` or `SECRET_KEY` | 32+ character random string |
+| **Backend** | `DATABASE_URL` | From Railway Postgres or your DB. Optional: add `?connection_limit=5` to the URL if your provider limits connections. |
+| **Backend** | `DB_POOL_MAX_CONNECTIONS` | Optional. Default `10`. Limits psycopg2 pool size to avoid exhaustion (e.g. on Railway). |
+| **Frontend** (e.g. marketlabs) | `NEXT_PUBLIC_API_URL` | Backend public URL, e.g. `https://zestful-laughter-production.up.railway.app` (no trailing slash) |
+
+**Critical:** If `NEXT_PUBLIC_API_URL` is not set on the frontend service, the app may call `http://localhost:5000` from the server or browser and fail in production. Set it in the **Frontend** service Variables and redeploy so it’s baked into the build.
+
+---
+
+## 7. Summary
 
 | Service   | Root Directory      | Build (optional)           | Start (optional)                    | Key variables                          |
 |----------|---------------------|----------------------------|-------------------------------------|----------------------------------------|
-| Backend  | `server`| (Dockerfile or pip install)| (Dockerfile CMD or gunicorn/python) | `DATABASE_URL`, `DB_TYPE`, secrets     |
-| Frontend | `web`               | `npm ci && npm run build`  | `npm start`                         | `NEXT_PUBLIC_API_URL` = backend URL    |
+| Backend  | `server`| (Dockerfile or pip install)| (Dockerfile CMD or gunicorn/python) | `DATABASE_URL`, `SECRET_KEY`, `CORS_ORIGINS`, optional `PORT=5000`, `DB_POOL_MAX_CONNECTIONS` |
+| Frontend | `web`               | `npm ci && npm run build`  | `npm start`                         | **`NEXT_PUBLIC_API_URL`** = backend URL (required on Railway) |
 
 After both services are deployed and `NEXT_PUBLIC_API_URL` points to the backend, the web UI will call the API correctly. Open the frontend URL and log in or register as usual.

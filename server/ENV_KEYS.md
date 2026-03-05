@@ -33,7 +33,8 @@ Use this with `.env.example`: copy to `.env` and set values. Keys needed to fix 
 |----------|-----------------|
 | **LOG_LEVEL** | You choose: `DEBUG`, `INFO`, `WARNING`, `ERROR`. |
 | **PYTHON_API_PORT** | Port the backend listens on (default `5000`). |
-| **CORS_ORIGINS** | Allowed origins for CORS; `*` for dev, or your API client origin in production. |
+| **CORS_ORIGINS** | Allowed origins for CORS; `*` for dev, or comma-separated URLs in production (e.g. your Railway frontend URL). |
+| **DB_POOL_MAX_CONNECTIONS** | Max connections in the PostgreSQL pool (default `10`). Lower on Railway to avoid connection exhaustion. |
 
 ---
 
