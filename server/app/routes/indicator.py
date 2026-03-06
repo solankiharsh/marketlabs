@@ -3,7 +3,7 @@ Indicator APIs (local-first).
 
 These endpoints are used by the frontend `/indicator-analysis` page.
 In the original architecture, the frontend called PHP endpoints like:
-`/addons/zing/indicator/getIndicators`.
+`/addons/marketlabs/indicator/getIndicators`.
 
 For local mode, we expose Python equivalents under `/api/indicator/*`.
 """
@@ -57,7 +57,7 @@ def _extract_indicator_meta_from_code(code: str) -> Dict[str, str]:
 
 def _row_to_indicator(row: Dict[str, Any], user_id: int) -> Dict[str, Any]:
     """
-    Map database row -> frontend expected indicator shape.
+    Map SQLite row -> frontend expected indicator shape.
 
     Frontend uses:
     - id, name, description, code
@@ -135,7 +135,7 @@ def get_indicators():
             cur = db.cursor()
             # Best-effort schema upgrade for VIP-free indicators
             try:
-                cur.execute("ALTER TABLE qd_indicator_codes ADD COLUMN IF NOT EXISTS vip_free BOOLEAN DEFAULT FALSE")
+                cur.execute("ALTER TABLE ml_indicator_codes ADD COLUMN IF NOT EXISTS vip_free BOOLEAN DEFAULT FALSE")
             except Exception:
                 pass
             # Get user's own indicators (both purchased and custom).
@@ -145,7 +145,7 @@ def get_indicators():
                   id, user_id, is_buy, end_time, name, code, description,
                   publish_to_community, pricing_type, price, is_encrypted, preview_image, vip_free,
                   createtime, updatetime, created_at, updated_at
-                FROM qd_indicator_codes
+                FROM ml_indicator_codes
                 WHERE user_id = ?
                 ORDER BY id DESC
                 """,
@@ -185,7 +185,7 @@ def save_indicator():
         description = (data.get("description") or "").strip()
         publish_to_community = 1 if data.get("publishToCommunity") or data.get("publish_to_community") else 0
         pricing_type = (data.get("pricingType") or data.get("pricing_type") or "free").strip() or "free"
-        vip_free = bool(data.get("vipFree") or data.get("vip_free"))
+        vip_free = 1 if (data.get("vipFree") or data.get("vip_free")) else 0
         try:
             price = float(data.get("price") or 0)
         except Exception:
@@ -208,7 +208,6 @@ def save_indicator():
 
         now = _now_ts()  # For BIGINT fields (createtime, updatetime)
 
-        # Admin-published indicators are auto-approved
         user_role = getattr(g, 'user_role', 'user')
         is_admin = user_role == 'admin'
         
@@ -216,13 +215,13 @@ def save_indicator():
             cur = db.cursor()
             # Best-effort schema upgrade for VIP-free indicators
             try:
-                cur.execute("ALTER TABLE qd_indicator_codes ADD COLUMN IF NOT EXISTS vip_free BOOLEAN DEFAULT FALSE")
+                cur.execute("ALTER TABLE ml_indicator_codes ADD COLUMN IF NOT EXISTS vip_free BOOLEAN DEFAULT FALSE")
             except Exception:
                 pass
             if indicator_id and indicator_id > 0:
                 if publish_to_community:
                     cur.execute(
-                        "SELECT publish_to_community, review_status FROM qd_indicator_codes WHERE id = ? AND user_id = ?",
+                        "SELECT publish_to_community, review_status FROM ml_indicator_codes WHERE id = ? AND user_id = ?",
                         (indicator_id, user_id)
                     )
                     existing = cur.fetchone()
@@ -231,7 +230,7 @@ def save_indicator():
                     if not was_published:
                         cur.execute(
                             """
-                            UPDATE qd_indicator_codes
+                            UPDATE ml_indicator_codes
                             SET name = ?, code = ?, description = ?,
                                 publish_to_community = ?, pricing_type = ?, price = ?, preview_image = ?,
                                 vip_free = ?,
@@ -245,7 +244,7 @@ def save_indicator():
                     else:
                         cur.execute(
                             """
-                            UPDATE qd_indicator_codes
+                            UPDATE ml_indicator_codes
                             SET name = ?, code = ?, description = ?,
                                 publish_to_community = ?, pricing_type = ?, price = ?, preview_image = ?,
                                 vip_free = ?,
@@ -257,10 +256,10 @@ def save_indicator():
                 else:
                     cur.execute(
                         """
-                        UPDATE qd_indicator_codes
+                        UPDATE ml_indicator_codes
                         SET name = ?, code = ?, description = ?,
                             publish_to_community = ?, pricing_type = ?, price = ?, preview_image = ?,
-                            vip_free = FALSE,
+                            vip_free = 0,
                             review_status = NULL, review_note = '', reviewed_at = NULL, reviewed_by = NULL,
                             updatetime = ?, updated_at = NOW()
                         WHERE id = ? AND user_id = ? AND (is_buy IS NULL OR is_buy = 0)
@@ -273,7 +272,7 @@ def save_indicator():
                     review_status = 'approved' if is_admin else 'pending'
                 cur.execute(
                     """
-                    INSERT INTO qd_indicator_codes
+                    INSERT INTO ml_indicator_codes
                       (user_id, is_buy, end_time, name, code, description,
                        publish_to_community, pricing_type, price, preview_image, vip_free, review_status,
                        createtime, updatetime, created_at, updated_at)
@@ -305,7 +304,7 @@ def delete_indicator():
         with get_db_connection() as db:
             cur = db.cursor()
             cur.execute(
-                "DELETE FROM qd_indicator_codes WHERE id = ? AND user_id = ? AND (is_buy IS NULL OR is_buy = 0)",
+                "DELETE FROM ml_indicator_codes WHERE id = ? AND user_id = ? AND (is_buy IS NULL OR is_buy = 0)",
                 (indicator_id, user_id),
             )
             db.commit()
@@ -321,13 +320,8 @@ def delete_indicator():
 @login_required
 def get_indicator_params():
     """
-    Get param declarations for an indicator (for strategy form).
-
-    Query params:
-        indicator_id: Indicator ID
-
-    Returns:
-        params: [{"name", "type", "default", "description"}, ...]
+    Get indicator param declarations for frontend (strategy creation form).
+    Query: indicator_id. Returns list of {name, type, default, description}.
     """
     try:
         from app.services.indicator_params import get_indicator_params as get_params
@@ -665,9 +659,7 @@ IMPORTANT: Output Python code directly, without explanations, without descriptio
 @login_required
 def call_indicator():
     """
-    Call another indicator (for frontend Pyodide).
-
-    Body: indicatorRef (int|str), klineData, params, currentIndicatorId.
+    Call another indicator (for frontend Pyodide). Body: indicatorRef (id or name), klineData, params, currentIndicatorId.
     Returns: { code, data: { df, columns } }.
     """
     try:
@@ -698,11 +690,13 @@ def call_indicator():
         for col in required_columns:
             if col not in df.columns:
                 df[col] = 0.0
+        
         df['open'] = df['open'].astype('float64')
         df['high'] = df['high'].astype('float64')
         df['low'] = df['low'].astype('float64')
         df['close'] = df['close'].astype('float64')
         df['volume'] = df['volume'].astype('float64')
+        
         result_df = indicator_caller.call_indicator(indicator_ref, df, params)
         result_dict = result_df.to_dict(orient='records')
         

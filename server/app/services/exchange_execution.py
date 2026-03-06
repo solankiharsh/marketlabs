@@ -61,8 +61,8 @@ def load_strategy_configs(strategy_id: int) -> Dict[str, Any]:
         cur = db.cursor()
         cur.execute(
             """
-            SELECT id, user_id, exchange_config, trading_config, market_type, leverage, execution_mode, market_category
-            FROM qd_strategies_trading
+            SELECT id, exchange_config, trading_config, market_type, leverage, execution_mode, market_category
+            FROM ml_strategies_trading
             WHERE id = %s
             """,
             (int(strategy_id),),
@@ -77,11 +77,9 @@ def load_strategy_configs(strategy_id: int) -> Dict[str, Any]:
     leverage = float(row.get("leverage") or trading_config.get("leverage") or exchange_config.get("leverage") or 1.0)
     execution_mode = (row.get("execution_mode") or "signal").strip().lower()
     market_category = (row.get("market_category") or "Crypto").strip()
-    user_id = int(row.get("user_id") or 1)
 
     return {
         "strategy_id": int(strategy_id),
-        "user_id": user_id,
         "exchange_config": exchange_config if isinstance(exchange_config, dict) else {},
         "trading_config": trading_config if isinstance(trading_config, dict) else {},
         "market_type": market_type,
@@ -92,13 +90,13 @@ def load_strategy_configs(strategy_id: int) -> Dict[str, Any]:
 
 
 def _load_credential_config(credential_id: int, user_id: int = 1) -> Dict[str, Any]:
-    """Load credential JSON from qd_exchange_credentials (plaintext in local mode)."""
+    """Load credential JSON from ml_exchange_credentials (plaintext in local mode)."""
     with get_db_connection() as db:
         cur = db.cursor()
         cur.execute(
             """
             SELECT encrypted_config
-            FROM qd_exchange_credentials
+            FROM ml_exchange_credentials
             WHERE id = %s AND user_id = %s
             """,
             (int(credential_id), int(user_id)),

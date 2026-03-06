@@ -1,49 +1,37 @@
 """
-Gunicorn configuration file (production environment)
+Gunicorn config (production).
 """
-import os
 import multiprocessing
 
-# Server socket (Railway sets PORT)
-_port = int(os.environ.get("PORT", 5000))
-bind = f"0.0.0.0:{_port}"
+# Server socket
+bind = "0.0.0.0:5000"
 backlog = 2048
 
-# Worker processes (set WEB_CONCURRENCY=1 or 2 on Railway for faster startup and to avoid OOM)
-_web_concurrency = os.environ.get("WEB_CONCURRENCY")
-if _web_concurrency not in (None, ""):
-    workers = max(1, int(_web_concurrency))
-else:
-    workers = min(multiprocessing.cpu_count() * 2 + 1, 4)
+# Workers
+workers = multiprocessing.cpu_count() * 2 + 1
 worker_class = "sync"
 worker_connections = 1000
-timeout = 600  # 10 minutes for long-running backtests (in seconds)
+timeout = 120
 keepalive = 5
 
-# Logs (use - for stdout/stderr when logs/ not writable, e.g. Railway)
-_log_dir = "logs"
-if os.path.isdir(_log_dir) and os.access(_log_dir, os.W_OK):
-    accesslog = f"{_log_dir}/access.log"
-    errorlog = f"{_log_dir}/error.log"
-    pidfile = f"{_log_dir}/gunicorn.pid"
-else:
-    accesslog = "-"
-    errorlog = "-"
-    pidfile = None
+# Logging
+accesslog = "logs/access.log"
+errorlog = "logs/error.log"
 loglevel = "info"
 access_log_format = '%(h)s %(l)s %(u)s %(t)s "%(r)s" %(s)s %(b)s "%(f)s" "%(a)s" %(D)s'
 
-# Process naming
-proc_name = "qd_python_api"
+# Process name
+proc_name = "marketlabs_python_api"
 
-# Server mode
+# Server
 daemon = False
+pidfile = "logs/gunicorn.pid"
 umask = 0
 user = None
 group = None
 tmp_upload_dir = None
 
-# SSL (if needed)
+# SSL (optional)
 # keyfile = None
 # certfile = None
 

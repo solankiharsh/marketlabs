@@ -61,19 +61,11 @@ def _safe_json_loads(value, default=None):
 
 def _get_single_price(market: str, symbol: str, force_refresh: bool = False) -> dict:
     """
-    Get price data for a single symbol.
-    
-    优先使用实时报价 API（ticker），降级使用分钟/日线 K 线数据。
-    这样可以在交易时段获取更实时的价格，而不是只显示日线收盘价。
-    
-    内置速率限制：同一市场的请求间隔至少 REQUEST_INTERVAL 秒，
-    避免触发 API 限制（如 yfinance、Tiingo、Finnhub 等）。
-    
+    Get price for a single symbol. Prefer ticker API, fallback to kline. Built-in rate limit per market (REQUEST_INTERVAL).
     Args:
-        force_refresh: 是否强制刷新（跳过缓存）
+        force_refresh: Skip cache if True.
     """
     try:
-        # 速率限制：同一市场的请求间隔
         with _request_lock:
             now = time.time()
             last_time = _last_request_time.get(market, 0)
@@ -82,16 +74,15 @@ def _get_single_price(market: str, symbol: str, force_refresh: bool = False) -> 
                 time.sleep(wait_time)
             _last_request_time[market] = time.time()
         
-        # 使用新的 get_realtime_price 方法获取实时价格
         price_data = kline_service.get_realtime_price(market, symbol, force_refresh=force_refresh)
-        
+
         return {
             'market': market,
             'symbol': symbol,
             'price': price_data.get('price', 0),
             'change': price_data.get('change', 0),
             'changePercent': price_data.get('changePercent', 0),
-            'source': price_data.get('source', 'unknown')  # 记录数据来源，便于调试
+            'source': price_data.get('source', 'unknown')
         }
     except Exception as e:
         logger.error(f"Failed to fetch price {market}:{symbol} - {str(e)}")
@@ -121,7 +112,7 @@ def get_positions():
             cur.execute(
                 """
                 SELECT id, market, symbol, name, side, quantity, entry_price, entry_time, notes, tags, group_name, created_at, updated_at
-                FROM qd_manual_positions
+                FROM ml_manual_positions
                 WHERE user_id = ?
                 ORDER BY id DESC
                 """,
@@ -252,7 +243,7 @@ def add_position():
             cur = db.cursor()
             cur.execute(
                 """
-                INSERT INTO qd_manual_positions 
+                INSERT INTO ml_manual_positions 
                 (user_id, market, symbol, name, side, quantity, entry_price, entry_time, notes, tags, group_name, created_at, updated_at)
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())
                 ON CONFLICT(user_id, market, symbol, side, group_name) DO UPDATE SET
@@ -334,7 +325,7 @@ def update_position(position_id):
         with get_db_connection() as db:
             cur = db.cursor()
             cur.execute(
-                f"UPDATE qd_manual_positions SET {', '.join(updates)} WHERE id = ? AND user_id = ?",
+                f"UPDATE ml_manual_positions SET {', '.join(updates)} WHERE id = ? AND user_id = ?",
                 params
             )
             db.commit()
@@ -356,7 +347,7 @@ def delete_position(position_id):
         with get_db_connection() as db:
             cur = db.cursor()
             cur.execute(
-                "DELETE FROM qd_manual_positions WHERE id = ? AND user_id = ?",
+                "DELETE FROM ml_manual_positions WHERE id = ? AND user_id = ?",
                 (position_id, user_id)
             )
             db.commit()
@@ -383,7 +374,7 @@ def get_portfolio_summary():
             cur.execute(
                 """
                 SELECT id, market, symbol, side, quantity, entry_price
-                FROM qd_manual_positions
+                FROM ml_manual_positions
                 WHERE user_id = ?
                 """,
                 (user_id,)
@@ -503,7 +494,7 @@ def get_monitors():
                 """
                 SELECT id, name, position_ids, monitor_type, config, notification_config, 
                        is_active, last_run_at, next_run_at, last_result, run_count, created_at, updated_at
-                FROM qd_position_monitors
+                FROM ml_position_monitors
                 WHERE user_id = ?
                 ORDER BY id DESC
                 """,
@@ -568,7 +559,7 @@ def add_monitor():
             cur = db.cursor()
             cur.execute(
                 """
-                INSERT INTO qd_position_monitors 
+                INSERT INTO ml_position_monitors 
                 (user_id, name, position_ids, monitor_type, config, notification_config, is_active, next_run_at, created_at, updated_at)
                 VALUES (?, ?, ?, ?, ?, ?, ?, NOW() + INTERVAL '%s minutes', NOW(), NOW())
                 """,
@@ -642,7 +633,7 @@ def update_monitor(monitor_id):
         with get_db_connection() as db:
             cur = db.cursor()
             cur.execute(
-                f"UPDATE qd_position_monitors SET {', '.join(updates)} WHERE id = ? AND user_id = ?",
+                f"UPDATE ml_position_monitors SET {', '.join(updates)} WHERE id = ? AND user_id = ?",
                 params
             )
             db.commit()
@@ -664,7 +655,7 @@ def delete_monitor(monitor_id):
         with get_db_connection() as db:
             cur = db.cursor()
             cur.execute(
-                "DELETE FROM qd_position_monitors WHERE id = ? AND user_id = ?",
+                "DELETE FROM ml_position_monitors WHERE id = ? AND user_id = ?",
                 (monitor_id, user_id)
             )
             db.commit()
@@ -756,8 +747,8 @@ def get_alerts():
                        a.notification_config, a.is_active, a.is_triggered, a.last_triggered_at,
                        a.trigger_count, a.repeat_interval, a.notes, a.created_at, a.updated_at,
                        p.name as position_name, p.side as position_side
-                FROM qd_position_alerts a
-                LEFT JOIN qd_manual_positions p ON a.position_id = p.id
+                FROM ml_position_alerts a
+                LEFT JOIN ml_manual_positions p ON a.position_id = p.id
                 WHERE a.user_id = ?
                 ORDER BY a.id DESC
                 """,
@@ -822,7 +813,7 @@ def add_alert():
             with get_db_connection() as db:
                 cur = db.cursor()
                 cur.execute(
-                    "SELECT market, symbol FROM qd_manual_positions WHERE id = ? AND user_id = ?",
+                    "SELECT market, symbol FROM ml_manual_positions WHERE id = ? AND user_id = ?",
                     (position_id, user_id)
                 )
                 pos = cur.fetchone()
@@ -846,7 +837,7 @@ def add_alert():
             existing_alert_id = None
             if position_id:
                 cur.execute(
-                    "SELECT id FROM qd_position_alerts WHERE position_id = ? AND user_id = ?",
+                    "SELECT id FROM ml_position_alerts WHERE position_id = ? AND user_id = ?",
                     (position_id, user_id)
                 )
                 existing = cur.fetchone()
@@ -857,7 +848,7 @@ def add_alert():
                 # Update existing alert instead of creating a new one
                 cur.execute(
                     """
-                    UPDATE qd_position_alerts 
+                    UPDATE ml_position_alerts 
                     SET alert_type = ?, threshold = ?, notification_config = ?, 
                         is_active = ?, is_triggered = 0, repeat_interval = ?, notes = ?, updated_at = NOW()
                     WHERE id = ?
@@ -870,7 +861,7 @@ def add_alert():
                 # Create new alert
                 cur.execute(
                     """
-                    INSERT INTO qd_position_alerts 
+                    INSERT INTO ml_position_alerts 
                     (user_id, position_id, market, symbol, alert_type, threshold, notification_config, 
                      is_active, repeat_interval, notes, created_at, updated_at)
                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())
@@ -940,7 +931,7 @@ def update_alert(alert_id):
         with get_db_connection() as db:
             cur = db.cursor()
             cur.execute(
-                f"UPDATE qd_position_alerts SET {', '.join(updates)} WHERE id = ? AND user_id = ?",
+                f"UPDATE ml_position_alerts SET {', '.join(updates)} WHERE id = ? AND user_id = ?",
                 params
             )
             db.commit()
@@ -962,7 +953,7 @@ def delete_alert(alert_id):
         with get_db_connection() as db:
             cur = db.cursor()
             cur.execute(
-                "DELETE FROM qd_position_alerts WHERE id = ? AND user_id = ?",
+                "DELETE FROM ml_position_alerts WHERE id = ? AND user_id = ?",
                 (alert_id, user_id)
             )
             db.commit()
@@ -988,7 +979,7 @@ def get_groups():
             cur.execute(
                 """
                 SELECT group_name, COUNT(*) as count
-                FROM qd_manual_positions
+                FROM ml_manual_positions
                 WHERE user_id = ? AND group_name != ''
                 GROUP BY group_name
                 ORDER BY group_name
@@ -999,7 +990,7 @@ def get_groups():
             
             # Also get count of ungrouped
             cur.execute(
-                "SELECT COUNT(*) as count FROM qd_manual_positions WHERE user_id = ? AND (group_name IS NULL OR group_name = '')",
+                "SELECT COUNT(*) as count FROM ml_manual_positions WHERE user_id = ? AND (group_name IS NULL OR group_name = '')",
                 (user_id,)
             )
             ungrouped = cur.fetchone()
@@ -1045,7 +1036,7 @@ def rename_group():
         with get_db_connection() as db:
             cur = db.cursor()
             cur.execute(
-                "UPDATE qd_manual_positions SET group_name = ?, updated_at = NOW() WHERE user_id = ? AND group_name = ?",
+                "UPDATE ml_manual_positions SET group_name = ?, updated_at = NOW() WHERE user_id = ? AND group_name = ?",
                 (new_name, user_id, old_name)
             )
             db.commit()

@@ -26,10 +26,10 @@ class BacktestService:
     }
     
     # Multi-timeframe backtest threshold configuration
-    # 1m backtest: max 15 days (~21,600 candles) - reduced for performance
+    # 1m backtest: max 1 month (~43,200 candles)
     # 5m backtest: max 1 year (~105,120 candles)
     MTF_CONFIG = {
-        'max_1m_days': 15,        # Max days for 1-minute backtest (reduced from 30 for performance)
+        'max_1m_days': 30,        # Max days for 1-minute backtest
         'max_5m_days': 365,       # Max days for 5-minute backtest
         'default_exec_tf': '1m',  # Default execution timeframe
         'fallback_exec_tf': '5m', # Fallback execution timeframe
@@ -79,7 +79,7 @@ class BacktestService:
             }
         
         if days_diff <= self.MTF_CONFIG['max_1m_days']:
-            # Within 15 days: use 1-minute precision
+            # Within 1 month: use 1-minute precision
             estimated_candles = days_diff * 24 * 60
             return '1m', {
                 'enabled': True,
@@ -90,7 +90,7 @@ class BacktestService:
                 'message': f'Using 1-minute precision backtest (~{estimated_candles:,} candles)'
             }
         elif days_diff <= self.MTF_CONFIG['max_5m_days']:
-            # 15 days to 1 year: use 5-minute precision
+            # 1 month to 1 year: use 5-minute precision
             estimated_candles = days_diff * 24 * 12
             return '5m', {
                 'enabled': True,
@@ -98,7 +98,7 @@ class BacktestService:
                 'days': days_diff,
                 'estimated_candles': estimated_candles,
                 'precision': 'medium',
-                'message': f'Range exceeds {self.MTF_CONFIG["max_1m_days"]} days, using 5-minute precision (~{estimated_candles:,} candles)'
+                'message': f'Range exceeds 30 days, using 5-minute precision (~{estimated_candles:,} candles)'
             }
         else:
             # Over 1 year: high-precision backtest not supported
@@ -192,12 +192,9 @@ class BacktestService:
             'trade_direction': trade_direction
         }
         signals = self._execute_indicator(indicator_code, df_signal, backtest_params)
-        logger.info(f"Signals generated: {list(signals.keys()) if isinstance(signals, dict) else type(signals)}")
         
         # 3. Fetch execution timeframe candles (for precise trade simulation)
-        logger.info(f"Fetching execution timeframe data: {exec_tf} for {market}:{symbol}")
         df_exec = self._fetch_kline_data(market, symbol, exec_tf, start_date, end_date)
-        logger.info(f"Execution timeframe data fetched: {len(df_exec)} candles")
         if df_exec.empty:
             logger.warning(f"Cannot fetch {exec_tf} candles, falling back to standard backtest")
             result = self.run(
@@ -224,9 +221,7 @@ class BacktestService:
         logger.info(f"Data fetched: signal_candles={len(df_signal)}, exec_candles={len(df_exec)}")
         
         # 4. Use execution timeframe for precise trade simulation
-        try:
-            logger.info("Starting MTF trading simulation...")
-            equity_curve, trades, total_commission = self._simulate_trading_mtf(
+        equity_curve, trades, total_commission = self._simulate_trading_mtf(
             df_signal=df_signal,
             df_exec=df_exec,
             signals=signals,
@@ -236,38 +231,19 @@ class BacktestService:
             leverage=leverage,
             trade_direction=trade_direction,
             strategy_config=strategy_config,
-                signal_timeframe=timeframe,
-                exec_timeframe=exec_tf
-            )
-            logger.info(f"MTF simulation completed: {len(trades)} trades executed")
-        except Exception as e:
-            logger.error(f"MTF simulation failed: {str(e)}")
-            logger.error(traceback.format_exc())
-            raise
+            signal_timeframe=timeframe,
+            exec_timeframe=exec_tf
+        )
         
         # 5. Calculate metrics
-        try:
-            logger.info(f"Calculating metrics: equity_curve_len={len(equity_curve)}, trades_len={len(trades)}, initial_capital={initial_capital}")
-            metrics = self._calculate_metrics(equity_curve, trades, initial_capital, timeframe, start_date, end_date, total_commission)
-            logger.info(f"Metrics calculated successfully: {list(metrics.keys())}")
-        except Exception as e:
-            logger.error(f"Failed to calculate metrics: {str(e)}")
-            logger.error(traceback.format_exc())
-            raise
+        metrics = self._calculate_metrics(equity_curve, trades, initial_capital, timeframe, start_date, end_date, total_commission)
         
         # 6. Format result
-        try:
-            logger.info("Formatting backtest result...")
-            result = self._format_result(metrics, equity_curve, trades)
-            result['precision_info'] = precision_info
-            result['execution_timeframe'] = exec_tf
-            result['signal_candles'] = len(df_signal)
-            result['execution_candles'] = len(df_exec)
-            logger.info("Backtest result formatted successfully")
-        except Exception as e:
-            logger.error(f"Failed to format result: {str(e)}")
-            logger.error(traceback.format_exc())
-            raise
+        result = self._format_result(metrics, equity_curve, trades)
+        result['precision_info'] = precision_info
+        result['execution_timeframe'] = exec_tf
+        result['signal_candles'] = len(df_signal)
+        result['execution_candles'] = len(df_exec)
         
         return result
     
@@ -291,11 +267,6 @@ class BacktestService:
         Simulates trades candle by candle on execution timeframe, 
         using inferred candle price path to determine trigger order.
         """
-        try:
-            logger.info(f"Entering _simulate_trading_mtf: df_signal={len(df_signal)}, df_exec={len(df_exec)}, signals_type={type(signals)}")
-        except Exception as e:
-            logger.error(f"Error in _simulate_trading_mtf entry logging: {e}")
-        
         equity_curve = []
         trades = []
         total_commission_paid = 0.0
@@ -371,38 +342,19 @@ class BacktestService:
             norm_signals = signals
             norm_signals['_both_mode'] = False  # Explicit 4-signal mode, not both mode
         elif all(k in signals for k in ['buy', 'sell']):
-            # Ensure signals have the same index as df_signal
-            buy_series = signals['buy']
-            sell_series = signals['sell']
-            
-            # Reindex to match df_signal.index (fill missing with False)
-            if not buy_series.index.equals(df_signal.index):
-                logger.warning(f"Buy signal index mismatch! Signal index: {buy_series.index[:5].tolist()}, df_signal index: {df_signal.index[:5].tolist()}")
-                buy_series = buy_series.reindex(df_signal.index, fill_value=False)
-            if not sell_series.index.equals(df_signal.index):
-                logger.warning(f"Sell signal index mismatch! Signal index: {sell_series.index[:5].tolist()}, df_signal index: {df_signal.index[:5].tolist()}")
-                sell_series = sell_series.reindex(df_signal.index, fill_value=False)
-            
-            buy = buy_series.fillna(False).astype(bool)
-            sell = sell_series.fillna(False).astype(bool)
-            
-            # Debug: log signal statistics
-            buy_count = buy.sum()
-            sell_count = sell.sum()
-            logger.info(f"Signal statistics: buy={buy_count}, sell={sell_count}, total_candles={len(df_signal)}")
-            
+            buy = signals['buy'].fillna(False).astype(bool)
+            sell = signals['sell'].fillna(False).astype(bool)
             td = str(trade_direction or 'both').lower()
-            logger.info(f"Trade direction: {td} (original: {trade_direction})")
             if td == 'long':
                 norm_signals = {
                     'open_long': buy, 'close_long': sell,
-                    'open_short': pd.Series([False] * len(df_signal), index=df_signal.index, dtype=bool),
-                    'close_short': pd.Series([False] * len(df_signal), index=df_signal.index, dtype=bool),
+                    'open_short': pd.Series([False] * len(df_signal), index=df_signal.index),
+                    'close_short': pd.Series([False] * len(df_signal), index=df_signal.index),
                 }
             elif td == 'short':
                 norm_signals = {
-                    'open_long': pd.Series([False] * len(df_signal), index=df_signal.index, dtype=bool),
-                    'close_long': pd.Series([False] * len(df_signal), index=df_signal.index, dtype=bool),
+                    'open_long': pd.Series([False] * len(df_signal), index=df_signal.index),
+                    'close_long': pd.Series([False] * len(df_signal), index=df_signal.index),
                     'open_short': sell, 'close_short': buy,
                 }
             else:
@@ -411,14 +363,12 @@ class BacktestService:
                 # We use special signal types 'enter_long' and 'enter_short' to indicate
                 # that the signal should auto-close opposing position before opening
                 norm_signals = {
-                    'open_long': buy, 'close_long': pd.Series([False] * len(df_signal), index=df_signal.index, dtype=bool),
-                    'open_short': sell, 'close_short': pd.Series([False] * len(df_signal), index=df_signal.index, dtype=bool),
+                    'open_long': buy, 'close_long': pd.Series([False] * len(df_signal), index=df_signal.index),
+                    'open_short': sell, 'close_short': pd.Series([False] * len(df_signal), index=df_signal.index),
                     '_both_mode': True  # Flag to indicate both mode for special handling
                 }
         else:
             raise ValueError("Invalid signal format")
-        
-        logger.info("Signal normalization completed, starting signal queue building...")
         
         # Map signals to execution timeframe
         # Strategy timeframe seconds (e.g. 1H=3600, 1D=86400)
@@ -429,38 +379,24 @@ class BacktestService:
         
         # Preprocessing: create signal queue sorted by effective time
         # Each signal executes at the open of the next execution candle after its candle closes
-        logger.info("Initializing signal queue...")
         signal_queue = []  # [(effective_time, signal_type, signal_bar_time), ...]
         
         # Debug: check signal values
         debug_signal_counts = {'open_long': 0, 'close_long': 0, 'open_short': 0, 'close_short': 0}
-        
-        # Verify all norm_signals have matching index
-        for sig_type in ['open_long', 'close_long', 'open_short', 'close_short']:
-            if not norm_signals[sig_type].index.equals(df_signal.index):
-                logger.error(f"Critical: {sig_type} signal index does not match df_signal.index!")
-                logger.error(f"  Signal index: {norm_signals[sig_type].index[:5].tolist()}")
-                logger.error(f"  df_signal index: {df_signal.index[:5].tolist()}")
-                # Reindex to fix
-                norm_signals[sig_type] = norm_signals[sig_type].reindex(df_signal.index, fill_value=False)
-                logger.warning(f"  Fixed by reindexing {sig_type}")
         
         for sig_time in df_signal.index:
             # Signal candle end time = start time + period
             sig_end = sig_time + timedelta(seconds=signal_tf_seconds)
             
             # Check if this signal candle has signals
-            # All signals should now have matching index, so we can safely use .loc[]
+            # Use .loc[] instead of .get() to be more explicit
             try:
-                ol = bool(norm_signals['open_long'].loc[sig_time])
-                cl = bool(norm_signals['close_long'].loc[sig_time])
-                os = bool(norm_signals['open_short'].loc[sig_time])
-                cs = bool(norm_signals['close_short'].loc[sig_time])
-            except (KeyError, IndexError) as e:
-                logger.warning(f"Error accessing signal at {sig_time}: {e}, signal index: {norm_signals['open_long'].index[:5].tolist()}, df_signal index: {df_signal.index[:5].tolist()}")
-                continue
+                ol = bool(norm_signals['open_long'].loc[sig_time]) if sig_time in norm_signals['open_long'].index else False
+                cl = bool(norm_signals['close_long'].loc[sig_time]) if sig_time in norm_signals['close_long'].index else False
+                os = bool(norm_signals['open_short'].loc[sig_time]) if sig_time in norm_signals['open_short'].index else False
+                cs = bool(norm_signals['close_short'].loc[sig_time]) if sig_time in norm_signals['close_short'].index else False
             except Exception as e:
-                logger.warning(f"Unexpected error accessing signal at {sig_time}: {e}")
+                logger.warning(f"Error accessing signal at {sig_time}: {e}")
                 continue
             
             if ol:
@@ -478,22 +414,6 @@ class BacktestService:
         
         logger.info(f"Debug signal counts from queue building: {debug_signal_counts}")
         
-        # If no signals found, log detailed diagnostic info
-        if len(signal_queue) == 0:
-            logger.warning("No signals found in signal queue! Diagnostic info:")
-            logger.warning(f"  df_signal length: {len(df_signal)}")
-            logger.warning(f"  df_signal index range: {df_signal.index[0]} to {df_signal.index[-1]}")
-            for sig_type in ['open_long', 'close_long', 'open_short', 'close_short']:
-                sig_series = norm_signals[sig_type]
-                true_count = sig_series.sum()
-                logger.warning(f"  {sig_type}: {true_count} True values out of {len(sig_series)}")
-                if true_count > 0:
-                    true_indices = sig_series[sig_series].index.tolist()[:5]
-                    logger.warning(f"    First few True indices: {true_indices}")
-            # Check if signals might be in wrong format
-            if 'buy' in signals or 'sell' in signals:
-                logger.warning("  Original signals had 'buy'/'sell' keys - check if conversion was correct")
-        
         # Sort by effective time
         signal_queue.sort(key=lambda x: x[0])
         signal_queue_idx = 0  # Current signal queue pointer
@@ -502,20 +422,12 @@ class BacktestService:
         if signal_queue:
             logger.info(f"First signal: {signal_queue[0][1]} @ {signal_queue[0][0]} (from {signal_queue[0][2]})")
             logger.info(f"Last signal: {signal_queue[-1][1]} @ {signal_queue[-1][0]} (from {signal_queue[-1][2]})")
-        else:
-            logger.error("Signal queue is empty! Backtest will fail. Check indicator code to ensure it generates buy/sell signals.")
         
         # Count signals by type
         signal_counts = {}
         for _, sig_type, _ in signal_queue:
             signal_counts[sig_type] = signal_counts.get(sig_type, 0) + 1
         logger.info(f"Signal counts: {signal_counts}")
-        
-        # Log first few signal details for debugging
-        if signal_queue:
-            logger.info(f"First 3 signals details:")
-            for idx, (sig_time, sig_type, sig_bar_time) in enumerate(signal_queue[:3]):
-                logger.info(f"  Signal {idx+1}: {sig_type} @ effective_time={sig_time}, from_bar={sig_bar_time}")
         
         # Log execution data range
         if len(df_exec) > 0:
@@ -531,18 +443,8 @@ class BacktestService:
         pending_signal_time = None  # Signal effective time
         executed_trades_count = 0  # Debug counter
         
-        # Progress logging for large datasets
-        total_exec_candles = len(df_exec)
-        progress_log_interval = max(1000, total_exec_candles // 10)  # Log every 10% or every 1000 candles
-        
-        logger.info(f"Starting execution loop: {total_exec_candles} candles to process, {len(signal_queue)} signals in queue")
-        
         for i, (timestamp, row) in enumerate(df_exec.iterrows()):
-            # Progress logging
-            if i > 0 and i % progress_log_interval == 0:
-                progress_pct = (i / total_exec_candles) * 100
-                logger.info(f"Execution progress: {i}/{total_exec_candles} ({progress_pct:.1f}%), trades={executed_trades_count}, position={position}")
-            # 爆仓后直接停止回测，输出结果
+            # After liquidation, stop backtest and output result
             if is_liquidated:
                 break
             
@@ -598,15 +500,13 @@ class BacktestService:
                         pending_signal = sig_type
                         pending_signal_time = sig_effective_time
                         signal_queue_idx += 1
-                        if executed_trades_count < 5 or signal_queue_idx <= 5:
-                            logger.info(f"Signal ready: {sig_type} @ {timestamp} (effective_time={sig_effective_time}, sig_bar_time={sig_bar_time}), "
-                                      f"will execute at open price (both_mode={both_mode_active}, position={position})")
+                        if executed_trades_count < 5:
+                            logger.info(f"Signal ready: {sig_type} @ {timestamp}, will execute at open price (both_mode={both_mode_active})")
                         break
                     else:
                         # Signal doesn't meet execution conditions, skip
-                        if signal_queue_idx < 10:
-                            logger.info(f"Skipping signal #{signal_queue_idx}: {sig_type} @ {sig_effective_time} "
-                                      f"(position={position}, can_execute=False, both_mode={both_mode_active})")
+                        if signal_queue_idx < 5:
+                            logger.info(f"Skipping signal #{signal_queue_idx}: {sig_type} (position={position}, can_execute=False)")
                         signal_queue_idx += 1
                         continue
                 else:
@@ -813,8 +713,6 @@ class BacktestService:
                 # 2. Execute pending signal (at open price)
                 if pending_signal and path_price == open_:
                     both_mode_active = norm_signals.get('_both_mode', False)
-                    if executed_trades_count < 10:
-                        logger.info(f"Executing pending signal: {pending_signal} @ {timestamp}, path_price={path_price}, open={open_}, position={position}")
                     
                     # open_long: In both mode, first close short if any, then open long
                     if pending_signal == 'open_long' and (position == 0 or (both_mode_active and position < 0)):
@@ -843,7 +741,7 @@ class BacktestService:
                             executed_trades_count += 1
                             if executed_trades_count <= 10:
                                 logger.info(f"Trade #{executed_trades_count}: close_short (before open_long) @ {timestamp}, price={close_price:.4f}, profit={close_profit:.2f}")
-                            # 检查是否爆仓
+                            # Check liquidation
                             if capital < min_capital_to_trade:
                                 is_liquidated = True
                                 capital = 0
@@ -900,7 +798,7 @@ class BacktestService:
                         highest_since_entry = None
                         lowest_since_entry = None
                         pending_signal = None
-                        # 检查是否爆仓
+                        # Check liquidation
                         if capital < min_capital_to_trade:
                             is_liquidated = True
                             capital = 0
@@ -931,7 +829,7 @@ class BacktestService:
                             executed_trades_count += 1
                             if executed_trades_count <= 10:
                                 logger.info(f"Trade #{executed_trades_count}: close_long (before open_short) @ {timestamp}, price={close_price:.4f}, profit={close_profit:.2f}")
-                            # 检查是否爆仓
+                            # Check liquidation
                             if capital < min_capital_to_trade:
                                 is_liquidated = True
                                 capital = 0
@@ -989,7 +887,7 @@ class BacktestService:
                         highest_since_entry = None
                         lowest_since_entry = None
                         pending_signal = None
-                        # 检查是否爆仓
+                        # Check liquidation
                         if capital < min_capital_to_trade:
                             is_liquidated = True
                             capital = 0
@@ -1011,25 +909,9 @@ class BacktestService:
             })
         
         # Summary log
-        logger.info(f"MTF simulation complete: executed_trades={executed_trades_count}, total_trades_recorded={len(trades)}, final_capital={capital:.2f}, final_position={position}")
+        logger.info(f"MTF simulation complete: executed_trades={executed_trades_count}, total_trades_recorded={len(trades)}, final_capital={capital:.2f}")
         if len(trades) == 0:
-            if len(signal_queue) == 0:
-                logger.error(f"No trades executed because signal queue is empty! This usually means:")
-                logger.error("  1. Indicator code did not generate any buy/sell signals")
-                logger.error("  2. Signal index mismatch between indicator output and df_signal")
-                logger.error("  3. All signal values are False")
-                raise ValueError("No signals generated by indicator code. Please check your indicator code to ensure it sets df['buy'] and/or df['sell'] columns with boolean values.")
-            else:
-                logger.error(f"No trades executed despite {len(signal_queue)} signals in queue. signal_queue_idx={signal_queue_idx}")
-                logger.error(f"  Signal queue processed: {signal_queue_idx}/{len(signal_queue)}")
-                logger.error(f"  Final position: {position}, Final capital: {capital:.2f}")
-                logger.error("  This may indicate:")
-                logger.error("    1. Signal timing issues (signal effective time doesn't match execution timeframe)")
-                logger.error("    2. Position state conflicts (signals skipped due to position state)")
-                logger.error("    3. Capital insufficient for trading")
-                logger.error(f"  First few signals: {signal_queue[:min(5, len(signal_queue))]}")
-                logger.error(f"  Exec data range: {df_exec.index[0]} to {df_exec.index[-1]}")
-                raise ValueError(f"No trades executed despite {len(signal_queue)} signals. Check signal timing and position state logic.")
+            logger.warning(f"No trades executed! signal_queue_idx={signal_queue_idx}, total_signals={len(signal_queue)}")
         
         return equity_curve, trades, total_commission_paid
     
@@ -1175,70 +1057,28 @@ class BacktestService:
         )
         
         if not kline_data:
-            logger.warning(f"No candle data retrieved for {market}:{symbol}, timeframe={timeframe}, limit={limit}, before_time={before_time}")
+            logger.warning("No candle data retrieved")
             return pd.DataFrame()
         
-        logger.info(f"Retrieved {len(kline_data)} candles for {market}:{symbol}, timeframe={timeframe}")
+        if kline_data:
+            first_time = datetime.fromtimestamp(kline_data[0]['time'])
+            last_time = datetime.fromtimestamp(kline_data[-1]['time'])
         
         # Convert to DataFrame
-        try:
-            df = pd.DataFrame(kline_data)
-            if df.empty:
-                logger.warning(f"DataFrame is empty after conversion")
-                return pd.DataFrame()
-            
-            # Handle time column - could be seconds or milliseconds
-            if 'time' not in df.columns:
-                logger.error(f"Missing 'time' column in kline data. Columns: {df.columns.tolist()}")
-                return pd.DataFrame()
-            
-            # Try seconds first, if fails try milliseconds
-            try:
-                df['time'] = pd.to_datetime(df['time'], unit='s')
-            except (ValueError, OverflowError):
-                # If seconds fails, try milliseconds
-                try:
-                    df['time'] = pd.to_datetime(df['time'], unit='ms')
-                except (ValueError, OverflowError):
-                    # If both fail, try direct conversion
-                    df['time'] = pd.to_datetime(df['time'])
-            
-            df = df.set_index('time')
-            
-            if df.empty:
-                logger.warning(f"DataFrame is empty after setting time index")
-                return pd.DataFrame()
-            
-            # Log data range before filtering
-            data_start = df.index.min()
-            data_end = df.index.max()
-            logger.info(f"Kline data range: {data_start} to {data_end}, requested range: {start_date} to {end_date}")
-            
-            # Check if requested range is within available data
-            if data_start > start_date:
-                logger.warning(f"Requested start date {start_date} is before available data start {data_start}. "
-                             f"Using available start date instead.")
-            if data_end < end_date:
-                logger.warning(f"Requested end date {end_date} is after available data end {data_end}. "
-                             f"Using available end date instead. This may affect backtest results.")
-            
-            # Filter date range (use available data range if requested range is outside)
-            effective_start = max(start_date, data_start)
-            effective_end = min(end_date, data_end)
-            df_filtered = df[(df.index >= effective_start) & (df.index <= effective_end)].copy()
-            
-            if df_filtered.empty:
-                logger.error(f"After filtering date range ({effective_start} to {effective_end}), no data remains. "
-                             f"Available data range: {data_start} to {data_end}, requested: {start_date} to {end_date}")
-                return pd.DataFrame()
-            
-            logger.info(f"After filtering: {len(df_filtered)} candles remain for backtest (effective range: {effective_start} to {effective_end})")
-            return df_filtered
-            
-        except Exception as e:
-            logger.error(f"Error processing kline data: {str(e)}")
-            logger.error(traceback.format_exc())
-            return pd.DataFrame()
+        df = pd.DataFrame(kline_data)
+        df['time'] = pd.to_datetime(df['time'], unit='s')
+        df = df.set_index('time')
+        
+        if len(df) > 0:
+            pass
+        
+        # Filter date range
+        df = df[(df.index >= start_date) & (df.index <= end_date)].copy()
+        
+        if len(df) > 0:
+            pass
+        
+        return df
     
     def _execute_indicator(self, code: str, df: pd.DataFrame, backtest_params: dict = None):
         """Execute indicator code to get signals.
@@ -1275,16 +1115,13 @@ class BacktestService:
                 local_vars['commission'] = backtest_params.get('commission', 0.0002)
                 local_vars['trade_direction'] = backtest_params.get('trade_direction', 'both')
             
-            # === 指标参数支持 ===
-            # 从 backtest_params 获取用户设置的指标参数
+            # Indicator params: from backtest_params, parse from code, merge (user overrides default)
             user_indicator_params = (backtest_params or {}).get('indicator_params', {})
-            # 解析指标代码中声明的参数
             declared_params = IndicatorParamsParser.parse_params(code)
-            # 合并参数（用户值优先，否则使用默认值）
             merged_params = IndicatorParamsParser.merge_params(declared_params, user_indicator_params)
             local_vars['params'] = merged_params
             
-            # === 指标调用器支持 ===
+            # Indicator caller support
             user_id = (backtest_params or {}).get('user_id', 1)
             indicator_id = (backtest_params or {}).get('indicator_id')
             indicator_caller = IndicatorCaller(user_id, indicator_id)
@@ -1373,25 +1210,9 @@ import pandas as pd
                 # Position sizing, TP/SL, trailing, etc must be handled by strategy_config / strategy logic.
             elif all(col in executed_df.columns for col in ['buy', 'sell']):
                 # Simple buy/sell signals (recommended for indicator authors)
-                buy_series = executed_df['buy'].fillna(False).astype(bool)
-                sell_series = executed_df['sell'].fillna(False).astype(bool)
-                
-                # Ensure signals have the same index as df
-                if not buy_series.index.equals(df.index):
-                    logger.warning(f"Buy signal index mismatch in _execute_indicator! Reindexing...")
-                    buy_series = buy_series.reindex(df.index, fill_value=False)
-                if not sell_series.index.equals(df.index):
-                    logger.warning(f"Sell signal index mismatch in _execute_indicator! Reindexing...")
-                    sell_series = sell_series.reindex(df.index, fill_value=False)
-                
-                # Debug: log signal statistics
-                buy_count = buy_series.sum()
-                sell_count = sell_series.sum()
-                logger.info(f"Indicator execution: buy signals={buy_count}, sell signals={sell_count}, total_candles={len(df)}")
-                
                 signals = {
-                    'buy': buy_series,
-                    'sell': sell_series
+                    'buy': executed_df['buy'].fillna(False).astype(bool),
+                    'sell': executed_df['sell'].fillna(False).astype(bool)
                 }
             
             else:
@@ -1710,7 +1531,7 @@ import pandas as pd
         add_short_price_arr = signals.get('add_short_price', pd.Series([0.0] * len(df))).values
         
         for i, (timestamp, row) in enumerate(df.iterrows()):
-            # 爆仓后直接停止回测，输出结果
+            # After liquidation, stop backtest and output result
             if is_liquidated:
                 break
 
@@ -1727,7 +1548,7 @@ import pandas as pd
                     'balance': 0
                 })
                 equity_curve.append({'time': timestamp.strftime('%Y-%m-%d %H:%M'), 'value': 0})
-                break  # 直接停止
+                break  # Stop
             
             # Use OHLC to evaluate triggers.
             high = row['high']
@@ -2378,7 +2199,7 @@ import pandas as pd
                         lowest_since_entry = None
                         trend_add_times = dca_add_times = trend_reduce_times = adverse_reduce_times = 0
                         last_trend_add_anchor = last_dca_add_anchor = last_trend_reduce_anchor = last_adverse_reduce_anchor = None
-                        # 检查是否爆仓
+                        # Check liquidation
                         if capital < min_capital_to_trade:
                             is_liquidated = True
                             capital = 0
@@ -2502,7 +2323,7 @@ import pandas as pd
                         lowest_since_entry = None
                         trend_add_times = dca_add_times = trend_reduce_times = adverse_reduce_times = 0
                         last_trend_add_anchor = last_dca_add_anchor = last_trend_reduce_anchor = last_adverse_reduce_anchor = None
-                        # 检查是否爆仓
+                        # Check liquidation
                         if capital < min_capital_to_trade:
                             is_liquidated = True
                             capital = 0
@@ -2604,7 +2425,7 @@ import pandas as pd
             # If liquidation hit, check SL signal first
             if position != 0 and not is_liquidated:
                 if position_type == 'long' and low <= liquidation_price:
-                    # Long触及爆仓线：检查是否有止损信号
+                    # Long at liquidation: check stop signal
                     has_stop_loss = close_long_arr[i] and close_long_price_arr[i] > 0
                     stop_loss_price = close_long_price_arr[i] if has_stop_loss else 0
                     
@@ -2628,7 +2449,7 @@ import pandas as pd
                     else:
                         # SL not strict enough, liquidation triggered
                         logger.warning(f"Long liquidation! entry={entry_price:.2f}, low={low:.2f}, "
-                                     f"爆仓线={liquidation_price:.2f}, 止损价={stop_loss_price:.2f}")
+                                     f"liq={liquidation_price:.2f}, stop={stop_loss_price:.2f}")
                         is_liquidated = True
                         capital = 0
                         trades.append({
@@ -2646,12 +2467,12 @@ import pandas as pd
                     continue
                     
                 elif position_type == 'short' and high >= liquidation_price:
-                    # Short触及爆仓线：检查是否有止损信号
+                    # Short at liquidation: check stop signal
                     has_stop_loss = close_short_arr[i] and close_short_price_arr[i] > 0
                     stop_loss_price = close_short_price_arr[i] if has_stop_loss else 0
                     
                     logger.warning(f"[candle {i}] Short hit liquidation! entry={entry_price:.2f}, high={high:.2f}, liq_price={liquidation_price:.2f}, "
-                              f"止损信号={close_short_arr[i]}, 止损价={stop_loss_price:.4f}, 时间={timestamp}")
+                              f"close_short={close_short_arr[i]}, stop={stop_loss_price:.4f}, time={timestamp}")
                     
                     # Determine SL or liquidation first
                     if has_stop_loss and stop_loss_price < liquidation_price:
@@ -2674,7 +2495,7 @@ import pandas as pd
                     else:
                         # SL not strict enough, liquidation triggered
                         logger.warning(f"Short liquidation! entry={entry_price:.2f}, high={high:.2f}, "
-                                     f"爆仓线={liquidation_price:.2f}, 止损价={stop_loss_price:.2f}")
+                                     f"liq={liquidation_price:.2f}, stop={stop_loss_price:.2f}")
                         is_liquidated = True
                         capital = 0
                         trades.append({
@@ -2777,7 +2598,7 @@ import pandas as pd
         strategy_config: Optional[Dict[str, Any]] = None
     ) -> tuple:
         """
-        使用旧格式信号进行交易模拟（保持兼容性）
+        Trade simulation using legacy signal format (compatibility).
         """
         equity_curve = []
         trades = []
@@ -2875,7 +2696,7 @@ import pandas as pd
                 signals_exec = signals
 
         for i, (timestamp, row) in enumerate(df.iterrows()):
-            # 爆仓后直接停止回测，输出结果
+            # After liquidation, stop backtest and output result
             if is_liquidated:
                 break
 
@@ -3020,7 +2841,7 @@ import pandas as pd
             if signal == 0 and position != 0 and position_type in ['long', 'short'] and capital >= min_capital_to_trade:
                 # Long
                 if position_type == 'long' and position > 0:
-                    # Trend add（顺势加仓：上涨触发）
+                    # Trend add (long on rise)
                     if trend_add_enabled and trend_add_step_pct_eff > 0 and trend_add_size_pct > 0 and (trend_add_max_times == 0 or trend_add_times < trend_add_max_times):
                         anchor = last_trend_add_anchor if last_trend_add_anchor is not None else entry_price
                         trigger = anchor * (1 + trend_add_step_pct_eff)
@@ -3053,7 +2874,7 @@ import pandas as pd
                                     'balance': round(max(0, capital), 2)
                                 })
 
-                    # DCA add（逆势加仓：下跌触发）
+                    # DCA add (add on dip)
                     if dca_add_enabled and dca_add_step_pct_eff > 0 and dca_add_size_pct > 0 and (dca_add_max_times == 0 or dca_add_times < dca_add_max_times):
                         anchor = last_dca_add_anchor if last_dca_add_anchor is not None else entry_price
                         trigger = anchor * (1 - dca_add_step_pct_eff)
@@ -3086,7 +2907,7 @@ import pandas as pd
                                     'balance': round(max(0, capital), 2)
                                 })
 
-                    # Trend reduce（顺势减仓：上涨触发）
+                    # Trend reduce (reduce on rise)
                     if trend_reduce_enabled and trend_reduce_step_pct_eff > 0 and trend_reduce_size_pct > 0 and (trend_reduce_max_times == 0 or trend_reduce_times < trend_reduce_max_times):
                         anchor = last_trend_reduce_anchor if last_trend_reduce_anchor is not None else entry_price
                         trigger = anchor * (1 + trend_reduce_step_pct_eff)
@@ -3121,7 +2942,7 @@ import pandas as pd
                                     'balance': round(max(0, capital), 2)
                                 })
 
-                    # Adverse reduce（逆势减仓：下跌触发）
+                    # Adverse reduce (reduce on dip)
                     if position_type == 'long' and position > 0 and adverse_reduce_enabled and adverse_reduce_step_pct_eff > 0 and adverse_reduce_size_pct > 0 and (adverse_reduce_max_times == 0 or adverse_reduce_times < adverse_reduce_max_times):
                         anchor = last_adverse_reduce_anchor if last_adverse_reduce_anchor is not None else entry_price
                         trigger = anchor * (1 - adverse_reduce_step_pct_eff)
@@ -3160,7 +2981,7 @@ import pandas as pd
                 if position_type == 'short' and position < 0:
                     shares_total = abs(position)
 
-                    # Trend add（顺势加空：下跌触发）
+                    # Trend add short (short on drop)
                     if trend_add_enabled and trend_add_step_pct_eff > 0 and trend_add_size_pct > 0 and (trend_add_max_times == 0 or trend_add_times < trend_add_max_times):
                         anchor = last_trend_add_anchor if last_trend_add_anchor is not None else entry_price
                         trigger = anchor * (1 - trend_add_step_pct_eff)
@@ -3194,7 +3015,7 @@ import pandas as pd
                                     'balance': round(max(0, capital), 2)
                                 })
 
-                    # DCA add（逆势加空：上涨触发）
+                    # DCA add short (add short on rise)
                     if dca_add_enabled and dca_add_step_pct_eff > 0 and dca_add_size_pct > 0 and (dca_add_max_times == 0 or dca_add_times < dca_add_max_times):
                         anchor = last_dca_add_anchor if last_dca_add_anchor is not None else entry_price
                         trigger = anchor * (1 + dca_add_step_pct_eff)
@@ -3228,7 +3049,7 @@ import pandas as pd
                                     'balance': round(max(0, capital), 2)
                                 })
 
-                    # Trend reduce（顺势减空：下跌触发，回补一部分）
+                    # Trend reduce short (cover on drop)
                     if trend_reduce_enabled and trend_reduce_step_pct_eff > 0 and trend_reduce_size_pct > 0 and (trend_reduce_max_times == 0 or trend_reduce_times < trend_reduce_max_times):
                         anchor = last_trend_reduce_anchor if last_trend_reduce_anchor is not None else entry_price
                         trigger = anchor * (1 - trend_reduce_step_pct_eff)
@@ -3264,7 +3085,7 @@ import pandas as pd
                                     'balance': round(max(0, capital), 2)
                                 })
 
-                    # Adverse reduce（逆势减空：上涨触发）
+                    # Adverse reduce short (cover on rise)
                     if position_type == 'short' and position < 0 and adverse_reduce_enabled and adverse_reduce_step_pct_eff > 0 and adverse_reduce_size_pct > 0 and (adverse_reduce_max_times == 0 or adverse_reduce_times < adverse_reduce_max_times):
                         anchor = last_adverse_reduce_anchor if last_adverse_reduce_anchor is not None else entry_price
                         trigger = anchor * (1 + adverse_reduce_step_pct_eff)
@@ -3703,7 +3524,7 @@ import pandas as pd
             # Note: check after all signals, SL/TP takes priority
             if position != 0 and not is_liquidated:
                 if position_type == 'long':
-                    # Long爆仓：价格跌破爆仓线
+                    # Long liquidation: price below liq level
                     if price <= liquidation_price:
                         logger.warning(f"Long liquidation! entry={entry_price:.2f}, current={price:.2f}, liq_price={liquidation_price:.2f}")
                         is_liquidated = True
@@ -3724,7 +3545,7 @@ import pandas as pd
                         })
                         continue
                 elif position_type == 'short':
-                    # Short爆仓：价格涨破爆仓线
+                    # Short liquidation: price above liq level
                     if price >= liquidation_price:
                         logger.warning(f"Short liquidation! entry={entry_price:.2f}, current={price:.2f}, liq_price={liquidation_price:.2f}")
                         is_liquidated = True
@@ -3839,7 +3660,7 @@ import pandas as pd
         end_date: datetime,
         total_commission: float = 0
     ) -> Dict:
-        """计算回测指标"""
+        """Compute backtest metrics."""
         if not equity_curve:
             return {}
         
@@ -3893,7 +3714,7 @@ import pandas as pd
         }
     
     def _calculate_max_drawdown(self, values: List[float]) -> float:
-        """计算最大回撤"""
+        """Compute max drawdown."""
         if not values:
             return 0
         
@@ -3911,12 +3732,12 @@ import pandas as pd
     
     def _calculate_sharpe(self, values: List[float], timeframe: str = '1D', risk_free_rate: float = 0.02) -> float:
         """
-        计算夏普比率
+        Compute Sharpe ratio.
         
         Args:
-            values: 权益曲线数值列表
-            timeframe: 时间周期
-            risk_free_rate: 无风险收益率（年化）
+            values: Equity curve values
+            timeframe: Timeframe
+            risk_free_rate: Risk-free rate (annualized)
         """
         if len(values) < 2:
             return 0
@@ -3929,11 +3750,11 @@ import pandas as pd
         # Determine annualization factor by timeframe
         annualization_factor = {
             '1m': 252 * 24 * 60,      # 1m candle: ~362,880
-            '5m': 252 * 24 * 12,      # 5分钟K：约72,576
-            '15m': 252 * 24 * 4,      # 15分钟K：约24,192
-            '30m': 252 * 24 * 2,      # 30分钟K：约12,096
-            '1H': 252 * 24,           # 1H candle: 6,048
-            '4H': 252 * 6,            # 4小时K：1,512
+            '5m': 252 * 24 * 12,
+            '15m': 252 * 24 * 4,
+            '30m': 252 * 24 * 2,
+            '1H': 252 * 24,
+            '4H': 252 * 6,
             '1D': 252,                # 1D candle: 252
             '1W': 52                  # 1W candle: 52
         }.get(timeframe, 252)
@@ -3969,7 +3790,7 @@ import pandas as pd
         equity_curve: List,
         trades: List
     ) -> Dict[str, Any]:
-        """格式化回测结果"""
+        """Format backtest result."""
         # Simplify equity curve
         max_points = 500
         if len(equity_curve) > max_points:
@@ -3978,7 +3799,7 @@ import pandas as pd
         
         # Clean NaN/Inf values for JSON serialization
         def clean_value(value):
-            """清理数值，将NaN/Inf转换为0"""
+            """Convert NaN/Inf to 0 for JSON."""
             if isinstance(value, float):
                 if np.isnan(value) or np.isinf(value):
                     return 0

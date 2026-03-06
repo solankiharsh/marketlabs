@@ -59,7 +59,7 @@ def create_client(exchange_config: Dict[str, Any], *, market_type: str = "swap")
         mt = "swap"
 
     if exchange_id == "binance":
-        # 检查是否启用模拟交易，支持布尔值和字符串
+        # Check whether demo trading is enabled, supports boolean and string values
         enable_demo = exchange_config.get("enable_demo_trading") or exchange_config.get("enableDemoTrading")
         is_demo = bool(enable_demo) if isinstance(enable_demo, bool) else str(enable_demo).lower() in ("true", "1", "yes")
         

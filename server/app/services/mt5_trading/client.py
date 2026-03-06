@@ -181,7 +181,7 @@ class MT5Client:
         side: str,
         volume: float,
         deviation: int = 20,
-        comment: str = "Zing",
+        comment: str = "MarketLabs",
     ) -> OrderResult:
         """
         Place a market order.
@@ -292,7 +292,7 @@ class MT5Client:
         side: str,
         volume: float,
         price: float,
-        comment: str = "Zing",
+        comment: str = "MarketLabs",
     ) -> OrderResult:
         """
         Place a pending limit order.
@@ -390,7 +390,7 @@ class MT5Client:
         ticket: int,
         volume: Optional[float] = None,
         deviation: int = 20,
-        comment: str = "Zing close",
+        comment: str = "MarketLabs close",
     ) -> OrderResult:
         """
         Close an open position.

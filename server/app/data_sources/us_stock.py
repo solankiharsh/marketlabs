@@ -1,6 +1,5 @@
 """
-美股数据源
-使用 yfinance 和 finnhub 获取数据
+US stock data source - uses yfinance and Finnhub.
 """
 from typing import Dict, List, Any, Optional
 from datetime import datetime, timedelta
@@ -15,11 +14,10 @@ logger = get_logger(__name__)
 
 
 class USStockDataSource(BaseDataSource):
-    """美股数据源"""
-    
+    """US stock data source."""
+
     name = "USStock/yfinance"
-    
-    # yfinance 时间周期映射
+
     INTERVAL_MAP = {
         '1m': '1m',
         '5m': '5m',
@@ -30,8 +28,7 @@ class USStockDataSource(BaseDataSource):
         '1D': '1d',
         '1W': '1wk'
     }
-    
-    # 不同周期获取数据的天数范围
+
     DAYS_MAP = {
         '1m': lambda limit: min(7, max(1, (limit // 390) + 2)),
         '5m': lambda limit: min(60, max(1, (limit // 78) + 2)),
@@ -44,7 +41,6 @@ class USStockDataSource(BaseDataSource):
     }
     
     def __init__(self):
-        # 初始化 finnhub 作为备选
         self.finnhub_client = None
         try:
             import finnhub
@@ -56,45 +52,29 @@ class USStockDataSource(BaseDataSource):
     
     def get_ticker(self, symbol: str) -> Dict[str, Any]:
         """
-        获取美股实时报价
-        
-        优先使用 Finnhub（更实时），降级使用 yfinance fast_info
-        
-        Returns:
-            dict: {
-                'last': 当前价格,
-                'change': 涨跌额,
-                'changePercent': 涨跌幅,
-                'high': 最高价,
-                'low': 最低价,
-                'open': 开盘价,
-                'previousClose': 昨收价
-            }
+        Get US stock real-time quote. Prefer Finnhub, fallback to yfinance fast_info.
+        Returns dict: last, change, changePercent, high, low, open, previousClose.
         """
         symbol = (symbol or '').strip().upper()
-        
-        # 优先使用 Finnhub（实时数据）
+
         if self.finnhub_client:
             try:
                 quote = self.finnhub_client.quote(symbol)
                 if quote and quote.get('c'):
                     return {
-                        'last': quote.get('c', 0),           # 当前价格
-                        'change': quote.get('d', 0),         # 涨跌额
-                        'changePercent': quote.get('dp', 0), # 涨跌幅
-                        'high': quote.get('h', 0),           # 日内最高
-                        'low': quote.get('l', 0),            # 日内最低
-                        'open': quote.get('o', 0),           # 开盘价
-                        'previousClose': quote.get('pc', 0)  # 昨收价
+                        'last': quote.get('c', 0),
+                        'change': quote.get('d', 0),
+                        'changePercent': quote.get('dp', 0),
+                        'high': quote.get('h', 0),
+                        'low': quote.get('l', 0),
+                        'open': quote.get('o', 0),
+                        'previousClose': quote.get('pc', 0)
                     }
             except Exception as e:
                 logger.warning(f"Finnhub quote failed for {symbol}: {e}")
-        
-        # 降级使用 yfinance
+
         try:
             ticker = yf.Ticker(symbol)
-            
-            # 尝试 fast_info（更快）
             try:
                 fast_info = ticker.fast_info
                 last_price = fast_info.get('lastPrice') or fast_info.get('last_price')
@@ -115,7 +95,7 @@ class USStockDataSource(BaseDataSource):
             except Exception as e:
                 logger.debug(f"yfinance fast_info failed for {symbol}: {e}")
             
-            # 降级使用 info（较慢但数据更全）
+            # fallback to info (slower but more complete)
             try:
                 info = ticker.info
                 last_price = info.get('regularMarketPrice') or info.get('currentPrice')
@@ -136,7 +116,7 @@ class USStockDataSource(BaseDataSource):
             except Exception as e:
                 logger.debug(f"yfinance info failed for {symbol}: {e}")
             
-            # 最后降级：使用最近的 1 分钟 K 线
+            # last fallback: use recent 1m kline
             try:
                 hist = ticker.history(period='1d', interval='1m')
                 if hist is not None and not hist.empty:
@@ -152,7 +132,7 @@ class USStockDataSource(BaseDataSource):
                         'high': float(hist['High'].max()),
                         'low': float(hist['Low'].min()),
                         'open': open_price,
-                        'previousClose': open_price  # 近似
+                        'previousClose': open_price
                     }
             except Exception as e:
                 logger.debug(f"yfinance history fallback failed for {symbol}: {e}")
@@ -169,7 +149,7 @@ class USStockDataSource(BaseDataSource):
         limit: int,
         before_time: Optional[int] = None
     ) -> List[Dict[str, Any]]:
-        """获取美股K线数据"""
+        """Get US stock kline data."""
         klines = []
         
         try:
@@ -177,7 +157,7 @@ class USStockDataSource(BaseDataSource):
             days_func = self.DAYS_MAP.get(timeframe, lambda x: x + 1)
             days = days_func(limit)
             
-            # 计算日期范围
+            # date range
             if before_time:
                 end_date = datetime.fromtimestamp(before_time)
                 start_date = end_date - timedelta(days=days)
@@ -185,13 +165,13 @@ class USStockDataSource(BaseDataSource):
                 end_date = datetime.now()
                 start_date = end_date - timedelta(days=days)
             
-            # logger.info(f"使用 yfinance 获取 {symbol}, 周期: {interval}, 日期: {start_date.date()} ~ {end_date.date()}")
+            # logger.info(f"yfinance {symbol}, interval={interval}, {start_date.date()} ~ {end_date.date()}")
             
-            # 尝试 yfinance
+            # try yfinance
             df = self._fetch_yfinance(symbol, interval, start_date, end_date)
             
             if df is None or df.empty:
-                # 尝试 finnhub
+                # try finnhub
                 if self.finnhub_client and timeframe == '1D':
                     klines = self._fetch_finnhub(symbol, start_date, end_date, limit)
                     if klines:
@@ -199,10 +179,10 @@ class USStockDataSource(BaseDataSource):
             else:
                 klines = self._convert_dataframe(df, limit)
             
-            # 过滤和限制
+            # filter and limit
             klines = self.filter_and_limit(klines, limit, before_time)
             
-            # 记录结果
+            # log result
             self.log_result(symbol, klines, timeframe)
             
         except Exception as e:
@@ -213,12 +193,11 @@ class USStockDataSource(BaseDataSource):
         return klines
     
     def _fetch_yfinance(self, symbol: str, interval: str, start_date: datetime, end_date: datetime):
-        """使用 yfinance 获取数据"""
+        """Fetch via yfinance."""
         try:
             ticker = yf.Ticker(symbol)
             
-            # yfinance 的 end 参数是不包含的（exclusive），所以需要加一天才能包含 end_date 当天的数据
-            # 例如：end="2026-01-12" 实际只返回到 2026-01-11 的数据
+            # yfinance end is exclusive; add one day to include end_date
             end_date_inclusive = end_date + timedelta(days=1)
             
             df = ticker.history(
@@ -226,7 +205,7 @@ class USStockDataSource(BaseDataSource):
                 end=end_date_inclusive.strftime('%Y-%m-%d'),
                 interval=interval
             )
-            # logger.info(f"yfinance 返回 {len(df) if df is not None and not df.empty else 0} 条数据")
+            # logger.info(f"yfinance returned {len(df) if df is not None and not df.empty else 0} bars")
             return df
         except Exception as e:
             logger.warning(f"yfinance fetch failed: {e}")
@@ -239,13 +218,13 @@ class USStockDataSource(BaseDataSource):
         end_date: datetime,
         limit: int
     ) -> List[Dict[str, Any]]:
-        """使用 finnhub 获取日线数据"""
+        """Fetch daily data via Finnhub."""
         klines = []
         try:
             start_ts = int(start_date.timestamp())
             end_ts = int(end_date.timestamp())
             
-            # logger.info(f"使用 Finnhub 获取 {symbol} 日线数据")
+            # logger.info(f"Finnhub daily {symbol}")
             candles = self.finnhub_client.stock_candles(symbol, 'D', start_ts, end_ts)
             
             if candles and candles.get('s') == 'ok':
@@ -258,18 +237,18 @@ class USStockDataSource(BaseDataSource):
                         close=candles['c'][i],
                         volume=candles['v'][i]
                     ))
-                # logger.info(f"Finnhub 返回 {len(klines)} 条数据")
+                # logger.info(f"Finnhub returned {len(klines)} bars")
         except Exception as e:
             logger.error(f"Finnhub fetch failed: {e}")
         
         return klines
     
     def _convert_dataframe(self, df, limit: int) -> List[Dict[str, Any]]:
-        """转换 DataFrame 为K线列表"""
+        """Convert DataFrame to kline list."""
         klines = []
         df = df.tail(limit).reset_index()
         
-        # 确定时间列名（日线是 Date，分钟级是 Datetime）
+        # time column: Date for daily, Datetime for intraday
         time_col = None
         if 'Datetime' in df.columns:
             time_col = 'Datetime'
@@ -284,7 +263,7 @@ class USStockDataSource(BaseDataSource):
         
         for _, row in df.iterrows():
             try:
-                # 处理时间戳
+                # handle timestamp
                 time_value = row[time_col]
                 if hasattr(time_value, 'timestamp'):
                     ts = int(time_value.timestamp())

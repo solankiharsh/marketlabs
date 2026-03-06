@@ -76,7 +76,7 @@ class UserService:
                     """
                     SELECT id, username, email, nickname, avatar, status, role, 
                            credits, vip_expires_at, last_login_at, created_at, updated_at
-                    FROM qd_users WHERE id = ?
+                    FROM ml_users WHERE id = ?
                     """,
                     (user_id,)
                 )
@@ -96,7 +96,7 @@ class UserService:
                     """
                     SELECT id, username, password_hash, email, nickname, avatar, 
                            status, role, last_login_at, created_at, updated_at
-                    FROM qd_users WHERE username = ?
+                    FROM ml_users WHERE username = ?
                     """,
                     (username,)
                 )
@@ -118,7 +118,7 @@ class UserService:
                     """
                     SELECT id, username, password_hash, email, nickname, avatar, 
                            status, role, last_login_at, created_at, updated_at
-                    FROM qd_users WHERE LOWER(email) = LOWER(?)
+                    FROM ml_users WHERE LOWER(email) = LOWER(?)
                     """,
                     (email,)
                 )
@@ -166,7 +166,7 @@ class UserService:
             with get_db_connection() as db:
                 cur = db.cursor()
                 cur.execute(
-                    "UPDATE qd_users SET last_login_at = NOW() WHERE id = ?",
+                    "UPDATE ml_users SET last_login_at = NOW() WHERE id = ?",
                     (user['id'],)
                 )
                 db.commit()
@@ -184,12 +184,20 @@ class UserService:
         return user
     
     def get_token_version(self, user_id: int) -> int:
-        """Get current token version for user (default 1)."""
+        """
+        Get the user's current token version number.
+
+        Args:
+            user_id: User ID
+
+        Returns:
+            Current token version number, defaults to 1
+        """
         try:
             with get_db_connection() as db:
                 cur = db.cursor()
                 cur.execute(
-                    "SELECT token_version FROM qd_users WHERE id = ?",
+                    "SELECT token_version FROM ml_users WHERE id = ?",
                     (user_id,)
                 )
                 row = cur.fetchone()
@@ -202,21 +210,33 @@ class UserService:
             return 1
     
     def increment_token_version(self, user_id: int) -> int:
-        """Increment user token version to invalidate old tokens (single-client login)."""
+        """
+        Increment the user's token version number, invalidating old tokens.
+        Used to implement single-client login (kick out other devices).
+
+        Args:
+            user_id: User ID
+
+        Returns:
+            New token version number
+        """
         try:
             with get_db_connection() as db:
                 cur = db.cursor()
+                # Increment token_version
                 cur.execute(
                     """
-                    UPDATE qd_users 
+                    UPDATE ml_users 
                     SET token_version = COALESCE(token_version, 0) + 1, updated_at = NOW()
                     WHERE id = ?
                     """,
                     (user_id,)
                 )
                 db.commit()
+                
+                # Get the new token_version
                 cur.execute(
-                    "SELECT token_version FROM qd_users WHERE id = ?",
+                    "SELECT token_version FROM ml_users WHERE id = ?",
                     (user_id,)
                 )
                 row = cur.fetchone()
@@ -288,7 +308,7 @@ class UserService:
                 cur = db.cursor()
                 cur.execute(
                     """
-                    INSERT INTO qd_users 
+                    INSERT INTO ml_users 
                     (username, password_hash, email, nickname, role, status, email_verified, referred_by, created_at, updated_at)
                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())
                     """,
@@ -301,7 +321,7 @@ class UserService:
                 # For PostgreSQL, get the ID differently
                 if user_id is None:
                     cur = db.cursor()
-                    cur.execute("SELECT id FROM qd_users WHERE username = ?", (username,))
+                    cur.execute("SELECT id FROM ml_users WHERE username = ?", (username,))
                     row = cur.fetchone()
                     user_id = row['id'] if row else None
                     cur.close()
@@ -341,7 +361,7 @@ class UserService:
         try:
             with get_db_connection() as db:
                 cur = db.cursor()
-                sql = f"UPDATE qd_users SET {', '.join(updates)} WHERE id = ?"
+                sql = f"UPDATE ml_users SET {', '.join(updates)} WHERE id = ?"
                 cur.execute(sql, tuple(values))
                 db.commit()
                 cur.close()
@@ -359,7 +379,7 @@ class UserService:
         # Get full user with password_hash
         with get_db_connection() as db:
             cur = db.cursor()
-            cur.execute("SELECT password_hash FROM qd_users WHERE id = ?", (user_id,))
+            cur.execute("SELECT password_hash FROM ml_users WHERE id = ?", (user_id,))
             row = cur.fetchone()
             cur.close()
             
@@ -390,7 +410,7 @@ class UserService:
             with get_db_connection() as db:
                 cur = db.cursor()
                 cur.execute(
-                    "UPDATE qd_users SET password_hash = ?, updated_at = NOW() WHERE id = ?",
+                    "UPDATE ml_users SET password_hash = ?, updated_at = NOW() WHERE id = ?",
                     (password_hash, user_id)
                 )
                 db.commit()
@@ -409,7 +429,7 @@ class UserService:
         try:
             with get_db_connection() as db:
                 cur = db.cursor()
-                cur.execute("DELETE FROM qd_users WHERE id = ?", (user_id,))
+                cur.execute("DELETE FROM ml_users WHERE id = ?", (user_id,))
                 db.commit()
                 cur.close()
                 return True
@@ -434,7 +454,7 @@ class UserService:
                     params = [search_term, search_term, search_term]
                 
                 # Get total count
-                count_sql = f"SELECT COUNT(*) as count FROM qd_users {where_clause}"
+                count_sql = f"SELECT COUNT(*) as count FROM ml_users {where_clause}"
                 cur.execute(count_sql, tuple(params))
                 total = cur.fetchone()['count']
                 
@@ -442,7 +462,7 @@ class UserService:
                 query_sql = f"""
                     SELECT id, username, email, nickname, avatar, status, role,
                            credits, vip_expires_at, last_login_at, created_at, updated_at
-                    FROM qd_users
+                    FROM ml_users
                     {where_clause}
                     ORDER BY id DESC
                     LIMIT ? OFFSET ?
@@ -474,13 +494,13 @@ class UserService:
         try:
             with get_db_connection() as db:
                 cur = db.cursor()
-                cur.execute("SELECT COUNT(*) as count FROM qd_users")
+                cur.execute("SELECT COUNT(*) as count FROM ml_users")
                 count = cur.fetchone()['count']
                 cur.close()
                 
                 if count == 0:
                     # Create admin using env credentials
-                    admin_user = os.getenv('ADMIN_USER', 'admin')
+                    admin_user = os.getenv('ADMIN_USER', 'marketlabs')
                     admin_password = os.getenv('ADMIN_PASSWORD', 'admin123')
                     admin_email = os.getenv('ADMIN_EMAIL', 'admin@example.com')
 

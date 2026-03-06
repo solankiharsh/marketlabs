@@ -161,8 +161,8 @@ curl -X POST http://localhost:5000/api/mt5/close \
 To remove this module, delete:
 
 ```
-server/app/services/mt5_trading/    # Entire directory
-server/app/routes/mt5.py            # Route file
+backend_api_python/app/services/mt5_trading/    # Entire directory
+backend_api_python/app/routes/mt5.py            # Route file
 ```
 
 Then remove the related import and registration code in `app/routes/__init__.py`.

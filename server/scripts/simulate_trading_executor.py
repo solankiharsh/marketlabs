@@ -5,7 +5,7 @@ Goal:
 - Create one indicator strategy using `indicator_python_code/code_test.py`
 - Inject deterministic K-lines and a deterministic tick-price sequence
 - Run TradingExecutor for a short period
-- Verify orders are enqueued into PostgreSQL table `pending_orders`
+- Verify orders are enqueued into SQLite table `pending_orders`
 
 Notes:
 - This is a local-only test helper. It does NOT talk to real exchanges.
@@ -24,7 +24,7 @@ from typing import Any, Dict, List, Optional
 
 def _ensure_backend_on_syspath() -> None:
     """
-    Ensure `server/` is on sys.path so `import app...` works
+    Ensure `backend_api_python/` is on sys.path so `import app...` works
     no matter where the script is executed from.
     """
     backend_root = Path(__file__).resolve().parents[1]
@@ -40,13 +40,13 @@ from app.utils.db import get_db_connection  # noqa: E402
 
 
 def _repo_root() -> Path:
-    # server/scripts/ -> server/
+    # backend_api_python/scripts/ -> backend_api_python/
     return Path(__file__).resolve().parents[1]
 
 
 def _read_indicator_code() -> str:
     # Use the user's current indicator script under repo root.
-    root = _repo_root().parent  # project root (zing/)
+    root = _repo_root().parent  # project root (marketlabs/)
     p = root / "indicator_python_code" / "code_test.py"
     return p.read_text(encoding="utf-8")
 
@@ -215,7 +215,7 @@ def _insert_strategy(
     trailing_stop_pct: float,
 ) -> int:
     """
-    Insert one strategy row into qd_strategies_trading and return its id.
+    Insert one strategy row into ml_strategies_trading and return its id.
     """
     now = int(time.time())
     trading_config = {
@@ -250,7 +250,7 @@ def _insert_strategy(
         cur = db.cursor()
         cur.execute(
             """
-            INSERT INTO qd_strategies_trading
+            INSERT INTO ml_strategies_trading
             (strategy_name, strategy_type, market_category, execution_mode, notification_config,
              status, symbol, timeframe, initial_capital, leverage, market_type,
              exchange_config, indicator_config, trading_config, ai_model_config, decide_interval,
@@ -361,7 +361,7 @@ def main() -> None:
     # Stop strategy by updating DB status.
     with get_db_connection() as db:
         cur = db.cursor()
-        cur.execute("UPDATE qd_strategies_trading SET status = 'stopped' WHERE id = ?", (strategy_id,))
+        cur.execute("UPDATE ml_strategies_trading SET status = 'stopped' WHERE id = ?", (strategy_id,))
         db.commit()
         cur.close()
 

@@ -1,6 +1,6 @@
 """
-数据源基类
-定义统一的数据源接口
+Data source base class.
+Defines a unified data source interface.
 """
 from abc import ABC, abstractmethod
 from typing import Dict, List, Any, Optional
@@ -11,7 +11,7 @@ from app.utils.logger import get_logger
 logger = get_logger(__name__)
 
 
-# K线周期映射（秒数）
+# K-line period mapping (seconds)
 TIMEFRAME_SECONDS = {
     '1m': 60,
     '5m': 300,
@@ -25,7 +25,7 @@ TIMEFRAME_SECONDS = {
 
 
 class BaseDataSource(ABC):
-    """数据源基类"""
+    """Data source base class"""
     
     name: str = "base"
     
@@ -38,16 +38,16 @@ class BaseDataSource(ABC):
         before_time: Optional[int] = None
     ) -> List[Dict[str, Any]]:
         """
-        获取K线数据
+        Get K-line data
         
         Args:
-            symbol: 交易对/股票代码
-            timeframe: 时间周期 (1m, 5m, 15m, 30m, 1H, 4H, 1D, 1W)
-            limit: 数据条数
-            before_time: 获取此时间之前的数据（Unix时间戳，秒）
+            symbol: Trading pair/stock code
+            timeframe: Time period (1m, 5m, 15m, 30m, 1H, 4H, 1D, 1W)
+            limit: Number of data points
+            before_time: Get data before this time (Unix timestamp, seconds)
             
         Returns:
-            K线数据列表，格式:
+            K-line data list, format:
             [{"time": int, "open": float, "high": float, "low": float, "close": float, "volume": float}, ...]
         """
         pass
@@ -70,7 +70,7 @@ class BaseDataSource(ABC):
         close: float,
         volume: float
     ) -> Dict[str, Any]:
-        """格式化单条K线数据"""
+        """Format single K-line data"""
         return {
             'time': timestamp,
             'open': round(float(open_price), 4),
@@ -87,15 +87,15 @@ class BaseDataSource(ABC):
         buffer_ratio: float = 1.2
     ) -> int:
         """
-        计算获取指定数量K线所需的时间范围（秒）
+        Calculate the time range needed to get the specified number of K-line data (seconds)
         
         Args:
-            timeframe: 时间周期
-            limit: K线数量
-            buffer_ratio: 缓冲系数
+            timeframe: Time period
+            limit: Number of K-line data
+            buffer_ratio: Buffer coefficient
             
         Returns:
-            时间范围（秒）
+            Time range (seconds)
         """
         seconds_per_candle = TIMEFRAME_SECONDS.get(timeframe, 86400)
         return int(seconds_per_candle * limit * buffer_ratio)
@@ -107,24 +107,24 @@ class BaseDataSource(ABC):
         before_time: Optional[int] = None
     ) -> List[Dict[str, Any]]:
         """
-        过滤和限制K线数据
+        Filter and limit K-line data
         
         Args:
-            klines: K线数据列表
-            limit: 最大数量
-            before_time: 过滤此时间之后的数据
+            klines: K-line data list
+            limit: Maximum number
+            before_time: Filter data after this time
             
         Returns:
-            处理后的K线数据
+            Processed K-line data
         """
-        # 按时间排序
+        # Sort by time
         klines.sort(key=lambda x: x['time'])
         
-        # 过滤时间
+        # Filter time
         if before_time:
             klines = [k for k in klines if k['time'] < before_time]
         
-        # 限制数量（取最新的）
+        # Limit number (take the latest)
         if len(klines) > limit:
             klines = klines[-limit:]
         
@@ -136,19 +136,19 @@ class BaseDataSource(ABC):
         klines: List[Dict[str, Any]],
         timeframe: str
     ):
-        """记录获取结果日志"""
+        """Log the result of getting data"""
         if klines:
             latest_time = datetime.fromtimestamp(klines[-1]['time'])
             time_diff = (datetime.now() - latest_time).total_seconds()
             # logger.info(
-            #     f"{self.name}: {symbol} 获取 {len(klines)} 条数据, "
-            #     f"最新时间: {latest_time}, 延迟: {time_diff:.0f}秒"
+            #     f"{self.name}: {symbol} get {len(klines)} data, "
+            #     f"latest time: {latest_time}, delay: {time_diff:.0f} seconds"
             # )
             
-            # 检查数据是否过旧
+            # Check if the data is too old
             max_diff = TIMEFRAME_SECONDS.get(timeframe, 3600) * 2
             if time_diff > max_diff:
-                logger.warning(f"Warning: {symbol} data is delayed ({time_diff:.0f}s)")
+                logger.warning(f"Warning: {symbol} data is delayed ({time_diff:.0f} seconds)")
         else:
             logger.warning(f"{self.name}: no data for {symbol}")
 

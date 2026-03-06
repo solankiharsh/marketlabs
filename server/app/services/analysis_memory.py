@@ -20,7 +20,7 @@ logger = get_logger(__name__)
 
 
 def _safe_json_parse(val, default=None):
-    """Safely parse JSON; handle already-Python or string values."""
+    """Safely parse JSON; handle already-Python object or string."""
     if val is None:
         return default
     if isinstance(val, (dict, list)):
@@ -43,14 +43,12 @@ class AnalysisMemory:
         self._ensure_table()
     
     def _ensure_table(self):
-        """Create memory table if not exists, and add missing columns if needed."""
+        """Create memory table if not exists."""
         try:
             with get_db_connection() as db:
                 cur = db.cursor()
-                
-                # Create table if not exists
                 cur.execute("""
-                    CREATE TABLE IF NOT EXISTS qd_analysis_memory (
+                    CREATE TABLE IF NOT EXISTS ml_analysis_memory (
                         id SERIAL PRIMARY KEY,
                         user_id INT,
                         market VARCHAR(50) NOT NULL,
@@ -66,7 +64,6 @@ class AnalysisMemory:
                         risks JSONB,
                         scores JSONB,
                         indicators_snapshot JSONB,
-                        raw_result JSONB,
                         created_at TIMESTAMP DEFAULT NOW(),
                         validated_at TIMESTAMP,
                         actual_outcome VARCHAR(20),
@@ -75,50 +72,20 @@ class AnalysisMemory:
                         user_feedback VARCHAR(20),
                         feedback_at TIMESTAMP
                     );
-                """)
-                
-                # Add missing columns for existing tables
-                cur.execute("""
-                    DO $$
-                    BEGIN
-                        -- Add user_id if missing
-                        IF NOT EXISTS (
-                            SELECT 1 FROM information_schema.columns 
-                            WHERE table_name = 'qd_analysis_memory' AND column_name = 'user_id'
-                        ) THEN
-                            ALTER TABLE qd_analysis_memory ADD COLUMN user_id INT;
-                        END IF;
-
-                        -- Add raw_result if missing
-                        IF NOT EXISTS (
-                            SELECT 1 FROM information_schema.columns 
-                            WHERE table_name = 'qd_analysis_memory' AND column_name = 'raw_result'
-                        ) THEN
-                            ALTER TABLE qd_analysis_memory ADD COLUMN raw_result JSONB;
-                        END IF;
-                    END $$;
-                """)
-                
-                # Create indexes
-                cur.execute("""
+                    
                     CREATE INDEX IF NOT EXISTS idx_analysis_memory_symbol 
-                    ON qd_analysis_memory(market, symbol);
+                    ON ml_analysis_memory(market, symbol);
                     
                     CREATE INDEX IF NOT EXISTS idx_analysis_memory_created 
-                    ON qd_analysis_memory(created_at DESC);
-                    
-                    CREATE INDEX IF NOT EXISTS idx_analysis_memory_validated 
-                    ON qd_analysis_memory(validated_at) WHERE validated_at IS NOT NULL;
+                    ON ml_analysis_memory(created_at DESC);
                     
                     CREATE INDEX IF NOT EXISTS idx_analysis_memory_user
-                    ON qd_analysis_memory(user_id);
+                    ON ml_analysis_memory(user_id);
                 """)
-                
                 db.commit()
                 cur.close()
-                logger.debug("Analysis memory table ensured successfully")
         except Exception as e:
-            logger.warning(f"Memory table creation/update skipped: {e}")
+            logger.warning(f"Memory table creation skipped: {e}")
     
     def store(self, analysis_result: Dict[str, Any], user_id: int = None) -> Optional[int]:
         """
@@ -134,8 +101,8 @@ class AnalysisMemory:
         try:
             with get_db_connection() as db:
                 cur = db.cursor()
-                
-                # Prepare data
+
+                # prepare data
                 market = analysis_result.get("market")
                 symbol = analysis_result.get("symbol")
                 decision = analysis_result.get("decision")
@@ -152,15 +119,16 @@ class AnalysisMemory:
                 raw = json.dumps(analysis_result)
                 
                 cur.execute("""
-                    INSERT INTO qd_analysis_memory (
+                    INSERT INTO ml_analysis_memory (
                         user_id, market, symbol, decision, confidence,
                         price_at_analysis, entry_price, stop_loss, take_profit,
                         summary, reasons, risks, scores, indicators_snapshot, raw_result
                     ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                     RETURNING id
-                """, (user_id, market, symbol, decision, confidence, price, entry, stop, take, 
+                """, (user_id, market, symbol, decision, confidence, price, entry, stop, take,
                       summary, reasons, risks, scores, indicators, raw))
-                
+
+                # ID from RETURNING
                 memory_id = cur.lastrowid
                 db.commit()
                 cur.close()
@@ -193,7 +161,7 @@ class AnalysisMemory:
                         id, decision, confidence, price_at_analysis,
                         summary, reasons, scores,
                         created_at, validated_at, was_correct, actual_return_pct
-                    FROM qd_analysis_memory
+                    FROM ml_analysis_memory
                     WHERE market = %s AND symbol = %s
                     AND created_at > NOW() - INTERVAL '{int(days)} days'
                     ORDER BY created_at DESC
@@ -247,7 +215,7 @@ class AnalysisMemory:
                 params_count = (user_id,) if user_id else ()
                 
                 # Get total count
-                cur.execute(f"SELECT COUNT(*) as cnt FROM qd_analysis_memory {where_clause}", params_count)
+                cur.execute(f"SELECT COUNT(*) as cnt FROM ml_analysis_memory {where_clause}", params_count)
                 total_row = cur.fetchone()
                 total = total_row['cnt'] if total_row else 0
                 
@@ -258,7 +226,7 @@ class AnalysisMemory:
                         id, market, symbol, decision, confidence, price_at_analysis,
                         summary, reasons, scores, indicators_snapshot, raw_result,
                         created_at, validated_at, was_correct, actual_return_pct
-                    FROM qd_analysis_memory
+                    FROM ml_analysis_memory
                     {where_clause}
                     ORDER BY created_at DESC
                     LIMIT %s OFFSET %s
@@ -313,9 +281,9 @@ class AnalysisMemory:
                 cur = db.cursor()
                 if user_id:
                     # Only delete if it belongs to the user
-                    cur.execute("DELETE FROM qd_analysis_memory WHERE id = %s AND user_id = %s", (memory_id, user_id))
+                    cur.execute("DELETE FROM ml_analysis_memory WHERE id = %s AND user_id = %s", (memory_id, user_id))
                 else:
-                    cur.execute("DELETE FROM qd_analysis_memory WHERE id = %s", (memory_id,))
+                    cur.execute("DELETE FROM ml_analysis_memory WHERE id = %s", (memory_id,))
                 db.commit()
                 affected = cur.rowcount
                 cur.close()
@@ -349,7 +317,7 @@ class AnalysisMemory:
                         id, decision, confidence, price_at_analysis,
                         summary, reasons, indicators_snapshot,
                         created_at, was_correct, actual_return_pct
-                    FROM qd_analysis_memory
+                    FROM ml_analysis_memory
                     WHERE market = %s AND symbol = %s
                     AND validated_at IS NOT NULL
                     AND was_correct IS NOT NULL
@@ -408,7 +376,7 @@ class AnalysisMemory:
             with get_db_connection() as db:
                 cur = db.cursor()
                 cur.execute("""
-                    UPDATE qd_analysis_memory
+                    UPDATE ml_analysis_memory
                     SET user_feedback = %s, feedback_at = NOW()
                     WHERE id = %s
                 """, (feedback, memory_id))
@@ -447,7 +415,7 @@ class AnalysisMemory:
                 # Get unvalidated decisions from N days ago
                 cur.execute(f"""
                     SELECT id, market, symbol, decision, price_at_analysis
-                    FROM qd_analysis_memory
+                    FROM ml_analysis_memory
                     WHERE validated_at IS NULL
                     AND created_at < NOW() - INTERVAL '{int(days_ago)} days'
                     AND created_at > NOW() - INTERVAL '{int(days_ago + 1)} days'
@@ -483,7 +451,7 @@ class AnalysisMemory:
                         
                         # Update record
                         cur.execute("""
-                            UPDATE qd_analysis_memory
+                            UPDATE ml_analysis_memory
                             SET validated_at = NOW(),
                                 actual_return_pct = %s,
                                 was_correct = %s
@@ -549,7 +517,7 @@ class AnalysisMemory:
                         SUM(CASE WHEN decision = 'HOLD' THEN 1 ELSE 0 END) as hold_count,
                         SUM(CASE WHEN user_feedback = 'helpful' THEN 1 ELSE 0 END) as helpful_count,
                         SUM(CASE WHEN user_feedback IS NOT NULL THEN 1 ELSE 0 END) as feedback_count
-                    FROM qd_analysis_memory
+                    FROM ml_analysis_memory
                     WHERE {where_sql}
                 """, tuple(params) if params else None)
                 

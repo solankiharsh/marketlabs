@@ -2,7 +2,7 @@
 Config loader (local-only).
 
 This project is fully localized: all sensitive configuration should come from
-`server/.env` (or OS environment variables).
+`backend_api_python/.env` (or OS environment variables).
 
 We keep the return shape compatible with the old PHP `loadConfig`:
 flat keys like `openrouter.api_key` become nested dicts like:
@@ -32,7 +32,7 @@ def load_addon_config() -> Dict[str, Any]:
     """
     global _config_cache
     
-    # Return cached config if present
+    # Return cached config if available
     if _config_cache is not None:
         return _config_cache
     
@@ -131,7 +131,7 @@ def load_addon_config() -> Dict[str, Any]:
         # Tavily (AI-optimized search)
         ('TAVILY_API_KEYS', 'tavily.api_keys', 'string'),
         
-        # Bocha (search optimization)
+        # Bocha (Chinese search optimization)
         ('BOCHA_API_KEYS', 'bocha.api_keys', 'string'),
         
         # SerpAPI (Google/Bing scraper)
@@ -154,7 +154,7 @@ def load_addon_config() -> Dict[str, Any]:
 
 def _convert_config_value(value: str, value_type: str) -> Any:
     """
-    Convert config value by type (aligned with PHP convertConfigValue).
+    Convert config value by type (consistent with PHP-side convertConfigValue method)
 
     Args:
         value: Config value string (may be None)
@@ -163,7 +163,7 @@ def _convert_config_value(value: str, value_type: str) -> Any:
     Returns:
         Converted config value
     """
-    # Handle None or empty
+    # Handle None or empty values
     if value is None or value == '':
         if value_type == 'int':
             return 0
@@ -193,7 +193,7 @@ def _convert_config_value(value: str, value_type: str) -> Any:
             return str(value) if value is not None else ''
     except (ValueError, TypeError) as e:
         logger.warning(f"Config value type conversion failed: value={value}, type={value_type}, error={str(e)}")
-        # On conversion failure return default
+        # Return default value on conversion failure
         if value_type == 'int':
             return 0
         elif value_type == 'float':
@@ -208,7 +208,7 @@ def _convert_config_value(value: str, value_type: str) -> Any:
 
 def get_internal_api_key() -> Optional[str]:
     """
-    Get internal API key (prefer environment variable).
+    Get internal API key (reads from environment variable first)
 
     Returns:
         Internal API key, or None if not configured
@@ -234,7 +234,7 @@ def get_internal_api_key() -> Optional[str]:
 
 def clear_config_cache():
     """
-    Clear config cache (call after config updates).
+    Clear config cache (call after config update)
     """
     global _config_cache
     _config_cache = None

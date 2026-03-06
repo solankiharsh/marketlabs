@@ -79,7 +79,7 @@ def get_security_config():
         config = get_security_service().get_security_config()
         return jsonify({'code': 1, 'msg': 'success', 'data': config})
     except Exception as e:
-        logger.exception("get_security_config error (check Deploy Logs for traceback): %s", e)
+        logger.error(f"get_security_config error: {e}")
         return jsonify({'code': 0, 'msg': str(e), 'data': None}), 500
 
 
@@ -189,7 +189,7 @@ def login():
             user_id=user_id,
             username=user.get('username', username),
             role=user.get('role', 'admin'),
-            token_version=new_token_version  # Include new token_version
+            token_version=new_token_version
         )
         
         if not token:
@@ -202,12 +202,16 @@ def login():
         security.clear_login_attempts(username, 'account')
         security.log_security_event('login_success', user.get('id'), ip_address, user_agent)
         
-        # Build user info for frontend
+        # Build user info for frontend (normalize legacy avatar path)
+        _av = (user.get('avatar') or '').strip()
+        if not _av or _av == '/avatar2.png':
+            _av = '/avatar2.jpg'
+        _uname = user.get('username', username)
         userinfo = {
             'id': user.get('id') or user.get('user_id', 1),
-            'username': user.get('username', username),
+            'username': _uname,
             'nickname': user.get('nickname', 'User') + (' (Demo)' if is_demo else ''),
-            'avatar': user.get('avatar', '/avatar2.jpg'),
+            'avatar': _av,
             'is_demo': is_demo,
             'role': {
                 'id': user.get('role', 'admin'),
@@ -225,8 +229,8 @@ def login():
         })
             
     except Exception as e:
-        logger.exception("Login error (check Deploy Logs for traceback): %s", e)
-        return jsonify({'code': 500, 'msg': 'Login failed. Try again or check backend Deploy Logs.', 'data': None}), 500
+        logger.error(f"Login error: {e}")
+        return jsonify({'code': 500, 'msg': str(e), 'data': None}), 500
 
 
 # =============================================================================
@@ -393,7 +397,7 @@ def login_with_code():
             with get_db_connection() as db:
                 cur = db.cursor()
                 cur.execute(
-                    "UPDATE qd_users SET last_login_at = NOW() WHERE id = ?",
+                    "UPDATE ml_users SET last_login_at = NOW() WHERE id = ?",
                     (user['id'],)
                 )
                 db.commit()
@@ -419,10 +423,10 @@ def login_with_code():
                 'is_new_user': is_new_user,
                 'userinfo': {
                     'id': user['id'],
-                    'username': user['username'],
+                    'username': user.get('username') or '',
                     'nickname': user.get('nickname', user['username']) + (' (Demo)' if is_demo else ''),
                     'email': user.get('email'),
-                    'avatar': user.get('avatar', '/avatar2.jpg'),
+                    'avatar': (lambda a: a if (a and (a or '').strip() != '/avatar2.png') else '/avatar2.jpg')(user.get('avatar')),
                     'is_demo': is_demo,
                     'role': {
                         'id': user.get('role', 'user'),
@@ -1050,15 +1054,16 @@ def get_user_info():
                 logger.warning(f"Failed to get user from database: {e}")
         
         if user_data:
+            _uname = user_data.get('username')
             return jsonify({
                 'code': 1,
                 'msg': 'Success',
                 'data': {
                     'id': user_data.get('id'),
-                    'username': user_data.get('username'),
+                    'username': _uname,
                     'nickname': user_data.get('nickname', 'User') + (' (Demo)' if is_demo else ''),
                     'email': user_data.get('email'),
-                    'avatar': user_data.get('avatar', '/avatar2.jpg'),
+                    'avatar': (lambda a: a if (a and (a or '').strip() != '/avatar2.png') else '/avatar2.jpg')(user_data.get('avatar')),
                     'is_demo': is_demo,
                     'role': {
                         'id': user_data.get('role', 'user'),
@@ -1073,7 +1078,7 @@ def get_user_info():
             'msg': 'Success',
             'data': {
                 'id': user_id,
-                'username': username,
+                'username': username or '',
                 'nickname': 'Admin' + (' (Demo)' if is_demo else ''),
                 'avatar': '/avatar2.jpg',
                 'is_demo': is_demo,

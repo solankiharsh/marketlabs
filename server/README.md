@@ -1,6 +1,6 @@
-# Zing Python API (backend)
+# MarketLabs Python API (backend)
 
-Flask-based backend for Zing: market data, indicators, AI analysis, backtesting, and a strategy runtime with multi-user support.
+Flask-based backend for MarketLabs: market data, indicators, AI analysis, backtesting, and a strategy runtime with multi-user support.
 
 ## What you get
 
@@ -15,7 +15,7 @@ Flask-based backend for Zing: market data, indicators, AI analysis, backtesting,
 ## Project layout
 
 ```text
-server/
+backend_api_python/
 ├─ app/
 │  ├─ __init__.py                 # Flask app factory + startup hooks
 │  ├─ config/                     # Settings (env-driven)
@@ -40,9 +40,9 @@ Create `.env` file in project root:
 
 ```bash
 # Database
-POSTGRES_USER=zing
+POSTGRES_USER=marketlabs
 POSTGRES_PASSWORD=your_secure_password
-POSTGRES_DB=zing
+POSTGRES_DB=marketlabs
 
 # Admin account (created on first startup)
 ADMIN_USER=admin
@@ -62,18 +62,20 @@ This will:
 - Start PostgreSQL database (port 5432)
 - Initialize database schema automatically
 - Start backend API (port 5000)
+- Start frontend (port 8888)
 - Create admin user from `ADMIN_USER`/`ADMIN_PASSWORD`
 
-### 3) Access the API
+### 3) Access the system
 
+- Frontend: `http://localhost:8888`
 - Backend API: `http://localhost:5000`
-- Use your configured admin credentials for `POST /api/user/login`
+- Login with your configured admin credentials
 
 ## Quick start (Local Development)
 
 ### Prerequisites
 
-- Python 3.10–3.13 recommended (3.14 not fully supported by some deps, e.g. `bip-utils` for USDT)
+- Python 3.10+ recommended
 - PostgreSQL 14+ installed and running
 
 ### 1) Setup PostgreSQL
@@ -81,22 +83,20 @@ This will:
 ```bash
 # Create database and user
 sudo -u postgres psql
-CREATE DATABASE zing;
-CREATE USER zing WITH ENCRYPTED PASSWORD 'your_password';
-GRANT ALL PRIVILEGES ON DATABASE zing TO zing;
+CREATE DATABASE marketlabs;
+CREATE USER marketlabs WITH ENCRYPTED PASSWORD 'your_password';
+GRANT ALL PRIVILEGES ON DATABASE marketlabs TO marketlabs;
 \q
 
 # Initialize schema
-psql -U zing -d zing -f migrations/init.sql
+psql -U marketlabs -d marketlabs -f migrations/init.sql
 ```
 
 ### 2) Install dependencies
 
 ```bash
-cd server
+cd backend_api_python
 pip install -r requirements.txt
-# Optional: USDT TRC20 / HD wallet support (requires Python 3.10–3.13)
-# pip install -r requirements-usdt.txt
 ```
 
 ### 3) Create your local `.env`
@@ -115,7 +115,7 @@ Then edit `.env` and set:
 
 ```bash
 # Required
-DATABASE_URL=postgresql://zing:your_password@localhost:5432/zing
+DATABASE_URL=postgresql://marketlabs:your_password@localhost:5432/marketlabs
 SECRET_KEY=your-secret-key-change-me
 ADMIN_USER=admin
 ADMIN_PASSWORD=your_admin_password
@@ -197,7 +197,7 @@ This backend includes a lightweight, privacy-first **memory-augmented multi-agen
 For Vue dev server:
 - Frontend: `http://localhost:8000`
 - Backend: `http://localhost:5000`
-- Proxy config: `qd_vue/vue.config.js`
+- Proxy config: `web/vue.config.js`
 
 ## Production (Gunicorn)
 
@@ -207,7 +207,6 @@ gunicorn -c gunicorn_config.py "run:app"
 
 ## Troubleshooting
 
-- **502 on POST /api/auth/login**: The Next.js app proxies `/api/*` to the backend. A 502 (often with ~1–60 ms) usually means the **Flask backend is not running** on port 5000. Start it from repo root with `make dev` (backend + web) or `make dev-backend` (backend only), or from `server/` with `python run.py`.
 - **Database connection failed**: Check `DATABASE_URL` format and PostgreSQL service status
 - **Outbound requests fail**: Configure `PROXY_PORT` or `PROXY_URL` in `.env`
 - **Disable auto-restore**: Set `DISABLE_RESTORE_RUNNING_STRATEGIES=true`

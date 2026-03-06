@@ -1,6 +1,5 @@
 """
-数据源工厂
-根据市场类型返回对应的数据源
+Data source factory - returns the data source for the given market type.
 """
 from typing import Dict, List, Any, Optional
 
@@ -11,20 +10,20 @@ logger = get_logger(__name__)
 
 
 class DataSourceFactory:
-    """数据源工厂"""
-    
+    """Data source factory."""
+
     _sources: Dict[str, BaseDataSource] = {}
-    
+
     @classmethod
     def get_source(cls, market: str) -> BaseDataSource:
         """
-        获取指定市场的数据源
-        
+        Get data source for the given market.
+
         Args:
-            market: 市场类型 (Crypto, USStock, Forex, Futures)
-            
+            market: Market type (Crypto, USStock, Forex, Futures)
+
         Returns:
-            数据源实例
+            Data source instance.
         """
         if market not in cls._sources:
             cls._sources[market] = cls._create_source(market)
@@ -48,7 +47,7 @@ class DataSourceFactory:
     
     @classmethod
     def _create_source(cls, market: str) -> BaseDataSource:
-        """创建数据源实例"""
+        """Create data source instance."""
         if market == 'Crypto':
             from app.data_sources.crypto import CryptoDataSource
             return CryptoDataSource()
@@ -62,7 +61,7 @@ class DataSourceFactory:
             from app.data_sources.futures import FuturesDataSource
             return FuturesDataSource()
         else:
-            raise ValueError(f"不支持的市场类型: {market}")
+            raise ValueError(f"Unsupported market type: {market}")
     
     @classmethod
     def get_kline(
@@ -74,23 +73,22 @@ class DataSourceFactory:
         before_time: Optional[int] = None
     ) -> List[Dict[str, Any]]:
         """
-        获取K线数据的便捷方法
-        
+        Convenience method to get kline data.
+
         Args:
-            market: 市场类型
-            symbol: 交易对/股票代码
-            timeframe: 时间周期
-            limit: 数据条数
-            before_time: 获取此时间之前的数据
-            
+            market: Market type
+            symbol: Symbol / stock code
+            timeframe: Timeframe
+            limit: Number of bars
+            before_time: Get data before this time
+
         Returns:
-            K线数据列表
+            List of kline dicts.
         """
         try:
             source = cls.get_source(market)
             klines = source.get_kline(symbol, timeframe, limit, before_time)
-            
-            # 确保数据按时间排序
+
             klines.sort(key=lambda x: x['time'])
             
             return klines
@@ -101,19 +99,14 @@ class DataSourceFactory:
     @classmethod
     def get_ticker(cls, market: str, symbol: str) -> Dict[str, Any]:
         """
-        获取实时报价的便捷方法
-        
+        Convenience method to get real-time ticker.
+
         Args:
-            market: 市场类型
-            symbol: 交易对/股票代码
-            
+            market: Market type
+            symbol: Symbol / stock code
+
         Returns:
-            实时报价数据: {
-                'last': 最新价,
-                'change': 涨跌额,
-                'changePercent': 涨跌幅,
-                ...
-            }
+            Ticker dict (last, change, changePercent, ...).
         """
         try:
             source = cls.get_source(market)

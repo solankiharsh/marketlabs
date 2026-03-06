@@ -1,5 +1,5 @@
 """
-Real-time trading execution service.
+Real-time trading execution service
 """
 import time
 import threading
@@ -27,10 +27,10 @@ logger = get_logger(__name__)
 
 
 class TradingExecutor:
-    """Real-time trading executor (Signal Provider Mode)."""
-
+    """Real-time trading executor (Signal Provider Mode)"""
+    
     def __init__(self):
-        # Use connection pool per request instead of global connection
+        # No longer using global connection; get from connection pool each time
         self.running_strategies = {}  # {strategy_id: thread}
         self.lock = threading.Lock()
         # Local-only lightweight in-memory price cache (symbol -> (price, expiry_ts)).
@@ -44,41 +44,57 @@ class TradingExecutor:
         # Keyed by (strategy_id, symbol, signal_type, signal_timestamp).
         self._signal_dedup = {}  # type: Dict[int, Dict[str, float]]
         self._signal_dedup_lock = threading.Lock()
-        self.kline_service = KlineService()  # Kline service (with cache)
-
-        # Per-instance thread limit to avoid "can't start new thread" / OOM
+        self.kline_service = KlineService()   # Kline service (with cache)
+        
+        # Per-instance thread limit to prevent unlimited thread creation causing can't start new thread/OOM
         self.max_threads = int(os.getenv('STRATEGY_MAX_THREADS', '64'))
-
-        # Ensure required DB columns exist
+        
+        # Ensure database columns exist
         self._ensure_db_columns()
 
     def _ensure_db_columns(self):
-        """Ensure required database columns exist (PostgreSQL)."""
+        """Ensure necessary database columns exist (supports SQLite and PostgreSQL)"""
         try:
+            db_type = os.getenv('DB_TYPE', 'sqlite').lower()
             with get_db_connection() as db:
                 cursor = db.cursor()
                 col_names = set()
 
-                # PostgreSQL: query columns via information_schema
-                try:
-                    cursor.execute("""
-                        SELECT column_name FROM information_schema.columns 
-                        WHERE table_name = 'qd_strategy_positions'
-                    """)
-                    cols = cursor.fetchall() or []
-                    col_names = {c.get('column_name') or c.get('COLUMN_NAME') for c in cols if isinstance(c, dict)}
-                except Exception:
-                    col_names = set()
+                if db_type == 'postgresql':
+                    # PostgreSQL: query columns using information_schema
+                    try:
+                        cursor.execute("""
+                            SELECT column_name FROM information_schema.columns 
+                            WHERE table_name = 'ml_strategy_positions'
+                        """)
+                        cols = cursor.fetchall() or []
+                        col_names = {c.get('column_name') or c.get('COLUMN_NAME') for c in cols if isinstance(c, dict)}
+                    except Exception:
+                        col_names = set()
+                else:
+                    # SQLite: use PRAGMA table_info
+                    try:
+                        cursor.execute("PRAGMA table_info(ml_strategy_positions)")
+                        cols = cursor.fetchall() or []
+                        col_names = {c.get('name') for c in cols if isinstance(c, dict)}
+                    except Exception:
+                        col_names = set()
 
                 if 'highest_price' not in col_names:
-                    logger.info("Adding highest_price column to qd_strategy_positions...")
-                    cursor.execute("ALTER TABLE qd_strategy_positions ADD COLUMN IF NOT EXISTS highest_price DOUBLE PRECISION DEFAULT 0")
+                    logger.info(f"Adding highest_price column to ml_strategy_positions ({db_type})...")
+                    if db_type == 'postgresql':
+                        cursor.execute("ALTER TABLE ml_strategy_positions ADD COLUMN IF NOT EXISTS highest_price DOUBLE PRECISION DEFAULT 0")
+                    else:
+                        cursor.execute("ALTER TABLE ml_strategy_positions ADD COLUMN highest_price REAL DEFAULT 0")
                     db.commit()
                     logger.info("highest_price column added")
 
                 if 'lowest_price' not in col_names:
-                    logger.info("Adding lowest_price column to qd_strategy_positions...")
-                    cursor.execute("ALTER TABLE qd_strategy_positions ADD COLUMN IF NOT EXISTS lowest_price DOUBLE PRECISION DEFAULT 0")
+                    logger.info(f"Adding lowest_price column to ml_strategy_positions ({db_type})...")
+                    if db_type == 'postgresql':
+                        cursor.execute("ALTER TABLE ml_strategy_positions ADD COLUMN IF NOT EXISTS lowest_price DOUBLE PRECISION DEFAULT 0")
+                    else:
+                        cursor.execute("ALTER TABLE ml_strategy_positions ADD COLUMN lowest_price REAL DEFAULT 0")
                     db.commit()
                     logger.info("lowest_price column added")
 
@@ -88,12 +104,12 @@ class TradingExecutor:
 
     def _normalize_trade_symbol(self, exchange: Any, symbol: str, market_type: str, exchange_id: str) -> str:
         """
-        Normalize symbol from DB/config to exchange CCXT symbol for contracts.
+        Normalize the symbol from database/config into a CCXT-compatible exchange contract symbol.
 
-        Example: OKX perpetual is often `BNB/USDT:USDT`; frontend/DB may send `BNB/USDT`.
+        Typical scenario: OKX perpetual unified symbol is usually `BNB/USDT:USDT`, but the frontend/database may pass `BNB/USDT`.
         """
         try:
-            # New system: only swap (perpetual) / spot
+            # New system: only supports swap (perpetual contracts) / spot
             if market_type != 'swap':
                 return symbol
             if not symbol or ':' in symbol:
@@ -101,7 +117,7 @@ class TradingExecutor:
             if not getattr(exchange, 'markets', None):
                 return symbol
 
-            # If symbol is already a contract market, return as-is
+            # If the symbol is already a contract market, return directly
             try:
                 m = exchange.market(symbol)
                 if m and (m.get('swap') or m.get('future') or m.get('contract')):
@@ -109,7 +125,7 @@ class TradingExecutor:
             except Exception:
                 pass
 
-            # OKX and others: perpetual often BASE/QUOTE:QUOTE or BASE/QUOTE:USDT
+            # OKX/some exchanges: perpetual format is commonly BASE/QUOTE:QUOTE or BASE/QUOTE:USDT
             if '/' not in symbol:
                 return symbol
             base, quote = symbol.split('/', 1)
@@ -131,9 +147,9 @@ class TradingExecutor:
             return symbol
 
     def _log_resource_status(self, prefix: str = ""):
-        """Debug: log thread/memory usage to diagnose 'can't start new thread'."""
+        """Debug: log thread/memory usage to help diagnose 'can't start new thread' root cause"""
         try:
-            import psutil  # Use for finer metrics if available
+            import psutil  # Use more precise metrics if installed
             p = psutil.Process()
             mem = p.memory_info().rss / 1024 / 1024
             th = p.num_threads()
@@ -142,7 +158,7 @@ class TradingExecutor:
         except Exception:
             try:
                 th = threading.active_count()
-                # Read VmRSS from /proc/self/status (Linux containers)
+                # Read VmRSS from /proc/self/status (applicable to Linux containers)
                 vmrss = None
                 try:
                     with open('/proc/self/status') as f:
@@ -384,11 +400,11 @@ class TradingExecutor:
             strategy_id: Strategy ID
 
         Returns:
-            True if started successfully
+            Whether successful
         """
         try:
             with self.lock:
-                # Clean up exited threads to avoid count inflation
+                # Clean up exited threads to prevent count inflation
                 stale_ids = [sid for sid, th in self.running_strategies.items() if not th.is_alive()]
                 for sid in stale_ids:
                     del self.running_strategies[sid]
@@ -414,7 +430,7 @@ class TradingExecutor:
                 try:
                     thread.start()
                 except Exception as e:
-                    # On "can't start new thread" etc., log resource status
+                    # Catch "can't start new thread" and similar exceptions, log resource status
                     self._log_resource_status(prefix="start_exception: ")
                     raise e
                 self.running_strategies[strategy_id] = thread
@@ -436,7 +452,7 @@ class TradingExecutor:
             strategy_id: Strategy ID
 
         Returns:
-            True if stopped successfully
+            Whether successful
         """
         try:
             with self.lock:
@@ -444,17 +460,17 @@ class TradingExecutor:
                     logger.warning(f"Strategy {strategy_id} is not running")
                     return False
                 
-                # Mark strategy as stopped in DB
+                # Mark strategy as stopped
                 with get_db_connection() as db:
                     cursor = db.cursor()
                     cursor.execute(
-                        "UPDATE qd_strategies_trading SET status = 'stopped' WHERE id = %s",
+                        "UPDATE ml_strategies_trading SET status = 'stopped' WHERE id = %s",
                         (strategy_id,)
                     )
                     db.commit()
                     cursor.close()
                 
-                # Remove from running list (thread will exit on next loop check)
+                # Remove from running list (thread will exit on next loop status check)
                 del self.running_strategies[strategy_id]
                 
                 logger.info(f"Strategy {strategy_id} stopped")
@@ -468,7 +484,7 @@ class TradingExecutor:
     
     def _run_strategy_loop(self, strategy_id: int):
         """
-        Strategy run loop.
+        Strategy execution loop.
 
         Args:
             strategy_id: Strategy ID
@@ -477,7 +493,7 @@ class TradingExecutor:
         self._console_print(f"[strategy:{strategy_id}] loop initializing")
         
         try:
-            # Load strategy config
+            # Load strategy configuration
             strategy = self._load_strategy(strategy_id)
             if not strategy:
                 logger.error(f"Strategy {strategy_id} not found")
@@ -509,38 +525,39 @@ class TradingExecutor:
                 logger.warning(f"Strategy {strategy_id} invalid leverage format, reset to 1: {trading_config.get('leverage')}")
                 leverage = 1.0
             
-            # Get market type, default contract
-            # Auto-detect: leverage=1 -> spot, leverage>1 -> contract
+            # Get market type, default to contract (swap)
+            # Auto-detect based on leverage: leverage=1 means spot, leverage>1 means contract
             market_type = trading_config.get('market_type', 'swap')
             if market_type not in ['swap', 'spot']:
                 logger.error(f"Strategy {strategy_id} invalid market_type={market_type} (only swap/spot supported); refusing to start")
                 return
             
-            # Adjust market type by leverage
+            # Auto-adjust market type based on leverage
             if leverage == 1.0:
-                market_type = 'spot'  # Spot is fixed 1x leverage
+                market_type = 'spot'  # Spot is fixed at 1x leverage
                 logger.info(f"Strategy {strategy_id} leverage=1; auto-switch market_type to spot")
             else:
-                # Contract: use swap (perpetual) to avoid futures/delivery confusion
+                # Contract market: use swap (perpetual) uniformly to avoid futures/delivery confusion causing position/order market mismatch
                 market_type = 'swap'
                 logger.info(f"Strategy {strategy_id} derivatives trading; normalize market_type to: {market_type}")
             
-            # Limit leverage by market type
+            # Limit leverage based on market type
             if market_type == 'spot':
-                leverage = 1.0  # Spot is fixed 1x
+                leverage = 1.0  # Spot is fixed at 1x leverage
             elif leverage < 1:
                 leverage = 1.0
             elif leverage > 125:
                 leverage = 125.0
                 logger.warning(f"Strategy {strategy_id} leverage > 125; capped to 125")
             
-            # Get trade direction; spot is long-only
+            # Get trade direction; spot can only go long
             trade_direction = trading_config.get('trade_direction', 'long')
             if market_type == 'spot':
-                trade_direction = 'long'  # Spot is long-only
+                trade_direction = 'long'  # Spot can only go long
                 logger.info(f"Strategy {strategy_id} spot trading; force trade_direction=long")
 
-            # Get market category (Crypto, USStock, Forex, Futures) for data source
+            # Get market category (Crypto, USStock, Forex, Futures)
+            # This determines which data source is used to fetch prices and K-line data
             market_category = (strategy.get('market_category') or 'Crypto').strip()
             logger.info(f"Strategy {strategy_id} market_category: {market_category}")
 
@@ -556,9 +573,9 @@ class TradingExecutor:
                 )
                 return
 
-            # Exchange not used in signal mode
+            # Initialize exchange connection (not needed in signal mode)
             exchange = None
-
+            
             # Safely get initial_capital
             try:
                 initial_capital_val = strategy.get('initial_capital', 1000)
@@ -569,13 +586,13 @@ class TradingExecutor:
                 logger.warning(f"Strategy {strategy_id} invalid initial_capital format, reset to 1000: {strategy.get('initial_capital')}")
                 initial_capital = 1000.0
             
-            # Equity is computed/updated on first position update
-
+            # Net asset value will be automatically calculated and updated on first position update
+            
             # Get indicator code
             indicator_id = indicator_config.get('indicator_id')
             indicator_code = indicator_config.get('indicator_code', '')
             
-            # If code is empty, try loading from DB
+            # If code is empty, try to fetch from database
             if not indicator_code and indicator_id:
                 indicator_code = self._get_indicator_code_from_db(indicator_id)
             
@@ -583,11 +600,11 @@ class TradingExecutor:
                 logger.error(f"Strategy {strategy_id} indicator_code is empty")
                 return
             
-            # Ensure indicator_code is a string (handle JSON escaping)
+            # Ensure indicator_code is a string (handle JSON escaping issues)
             if not isinstance(indicator_code, str):
                 indicator_code = str(indicator_code)
             
-            # Handle possible JSON escape issues
+            # Handle possible JSON escaping issues
             if '\\n' in indicator_code and '\n' not in indicator_code:
                 try:
                     import json
@@ -608,8 +625,9 @@ class TradingExecutor:
                     )
             
             # ============================================
-            # Init: fetch history K-lines and compute indicator
+            # Initialization phase: fetch historical K-lines and calculate indicators
             # ============================================
+            # logger.info(f"Strategy {strategy_id} initializing: fetching historical K-line data...")
             history_limit = int(os.getenv('K_LINE_HISTORY_GET_NUMBER', 500))
             klines = self._fetch_latest_kline(symbol, timeframe, limit=history_limit, market_category=market_category)
             if not klines or len(klines) < 2:
@@ -624,42 +642,35 @@ class TradingExecutor:
                 return
 
             # ============================================
-            # On start: sync positions and clear stale/orphan positions
+            # On startup: rely entirely on local database position state (virtual positions)
             # ============================================
-            try:
-                logger.info(f"Strategy {strategy_id} checking position sync on start...")
-                from app import get_pending_order_worker
-                worker = get_pending_order_worker()
-                if worker and hasattr(worker, '_sync_positions_best_effort'):
-                    worker._sync_positions_best_effort(target_strategy_id=strategy_id)
-                    logger.info(f"Strategy {strategy_id} position sync on start done")
-            except Exception as e:
-                logger.warning(f"Strategy {strategy_id} position sync on start failed (non-fatal): {e}")
+            # In signal mode, no longer sync exchange positions
+            pass
 
-            # Get current position highest price from local DB
+            # Get current position highest price (read from local database)
             current_pos_list = self._get_current_positions(strategy_id, symbol)
             initial_highest = 0.0
-            initial_position = 0  # 0=flat, 1=long, -1=short
+            initial_position = 0  # 0=no position, 1=long, -1=short
             initial_avg_entry_price = 0.0
             initial_position_count = 0
             initial_last_add_price = 0.0
             
             if current_pos_list:
-                pos = current_pos_list[0]  # First position (single-position mode)
+                pos = current_pos_list[0]  # Take the first position (one-way position mode)
                 initial_highest = float(pos.get('highest_price', 0) or 0)
                 pos_side = pos.get('side', 'long')
                 initial_position = 1 if pos_side == 'long' else -1
                 initial_avg_entry_price = float(pos.get('entry_price', 0) or 0)
-                initial_position_count = 1  # Assume single position
+                initial_position_count = 1  # Simplified: assume single position
                 initial_last_add_price = initial_avg_entry_price
 
-            # Diagnostic: confirm indicator received position state
+            # Key diagnostic log: confirm whether the indicator received position state
             logger.info(
-                f"Strategy {strategy_id} indicator position state: count={len(current_pos_list)}, "
+                f"Strategy {strategy_id} injected position state into indicator: count={len(current_pos_list)}, "
                 f"position={initial_position}, entry_price={initial_avg_entry_price}, highest={initial_highest}"
             )
 
-            # Run indicator and get signals + trigger prices
+            # Execute indicator code to get signals and trigger prices
             indicator_result = self._execute_indicator_with_prices(
                 indicator_code, df, trading_config, 
                 initial_highest_price=initial_highest,
@@ -673,8 +684,8 @@ class TradingExecutor:
                 return
             
             # Extract signals and trigger prices
-            pending_signals = indicator_result.get('pending_signals', [])  # Pending signals
-            last_kline_time = indicator_result.get('last_kline_time', 0)  # Last K-line time
+            pending_signals = indicator_result.get('pending_signals', [])  # List of pending signals
+            last_kline_time = indicator_result.get('last_kline_time', 0)  # Time of the last K-line
             
             logger.info(f"Strategy {strategy_id} initialized; pending_signals={len(pending_signals)}")
             if pending_signals:
@@ -696,7 +707,7 @@ class TradingExecutor:
             last_tick_time = 0.0
             last_kline_update_time = time.time()
             
-            # K-line period in seconds
+            # Calculate K-line period (seconds)
             from app.data_sources.base import TIMEFRAME_SECONDS
             timeframe_seconds = TIMEFRAME_SECONDS.get(timeframe, 3600)
             kline_update_interval = timeframe_seconds  # Update once per K-line period
@@ -719,7 +730,7 @@ class TradingExecutor:
                     last_tick_time = current_time
 
                     # ============================================
-                    # 0. Virtual position mode; no exchange sync
+                    # 0. Virtual position mode, no exchange sync needed
                     # ============================================
                     # pass
                     
@@ -732,7 +743,7 @@ class TradingExecutor:
                         continue
 
                     # ============================================
-                    # 2. Check if K-line update needed (once per period, from API)
+                    # 2. Check if K-lines need updating (update once per K-line period, fetched from API)
                     # ============================================
                     if current_time - last_kline_update_time >= kline_update_interval:
                         klines = self._fetch_latest_kline(symbol, timeframe, limit=history_limit, market_category=market_category)
@@ -770,7 +781,7 @@ class TradingExecutor:
 
                                     last_kline_update_time = current_time
 
-                                    # Update highest_price (use latest close as current_price approx)
+                                    # Update highest_price (using latest close as approximation for current_price)
                                     if new_hp > 0 and current_pos_list:
                                         current_close = float(df['close'].iloc[-1])
                                         for p in current_pos_list:
@@ -782,7 +793,7 @@ class TradingExecutor:
                                             )
                     else:
                         # ============================================
-                        # 3. Non-K-line tick: update last candle with current price and recompute (unified tick)
+                        # 3. Non-K-line-update tick: update last K-line with current price and recalculate indicator (unified tick cadence)
                         # ============================================
                         if 'df' in locals() and df is not None and len(df) > 0:
                             try:
@@ -831,7 +842,7 @@ class TradingExecutor:
                     # ============================================
                     # 4. Evaluate triggers once per tick
                     # ============================================
-                    # Signal expiration: drop expired pending signals
+                    # Optimization 4: Signal expiration cleanup
                     current_ts = int(time.time())
                     if pending_signals:
                         expiration_threshold = timeframe_seconds * 2
@@ -857,15 +868,15 @@ class TradingExecutor:
                         signal_type = signal_info.get('type')  # 'open_long', 'close_long', 'open_short', 'close_short'
                         trigger_price = signal_info.get('trigger_price', 0)
                         
-                        # Check if price triggers signal
+                        # Check if price triggers the signal
                         triggered = False
 
-                        # Close/SL/TP signals default to immediate trigger
+                        # [Key fix] Close/stop-loss/take-profit signals default to “immediate trigger”
                         exit_trigger_mode = trading_config.get('exit_trigger_mode', 'immediate')  # 'immediate' or 'price'
                         if signal_type in ['close_long', 'close_short'] and exit_trigger_mode == 'immediate':
                             triggered = True
                         
-                        # Optional: whether entry/add signals use immediate trigger
+                        # [Optional] Whether open/add position signals trigger “immediately”
                         entry_trigger_mode = trading_config.get('entry_trigger_mode', 'price')  # 'price' or 'immediate'
                         if signal_type in ['open_long', 'open_short', 'add_long', 'add_short'] and entry_trigger_mode == 'immediate':
                             triggered = True
@@ -912,7 +923,7 @@ class TradingExecutor:
                     if risk_sl:
                         triggered_signals.append(risk_sl)
                         
-                    # Remove triggered signals from pending list
+                    # Remove triggered signals from the pending list
                     for signal_info in signals_to_remove:
                         if signal_info in pending_signals:
                             pending_signals.remove(signal_info)
@@ -1035,7 +1046,7 @@ class TradingExecutor:
     
     def _sync_positions_with_exchange(self, strategy_id: int, exchange: Any, symbol: str, market_type: str):
         """
-        [Deprecated] Signal mode does not sync exchange positions.
+        [Deprecated] No need to sync exchange positions in signal mode
         """
         pass
 
@@ -1051,7 +1062,7 @@ class TradingExecutor:
                         execution_mode, notification_config,
                         indicator_config, exchange_config, trading_config, ai_model_config,
                         market_category
-                    FROM qd_strategies_trading
+                    FROM ml_strategies_trading
                     WHERE id = %s
                 """
                 cursor.execute(query, (strategy_id,))
@@ -1089,48 +1100,18 @@ class TradingExecutor:
             return None
     
     def _is_strategy_running(self, strategy_id: int) -> bool:
-        """
-        Check if strategy is running.
-        Checks both DB status and thread status to avoid inconsistency after restart.
-        """
+        """Check whether the strategy is running"""
         try:
-            # 1. Check DB status
             with get_db_connection() as db:
                 cursor = db.cursor()
                 cursor.execute(
-                    "SELECT status FROM qd_strategies_trading WHERE id = %s",
+                    "SELECT status FROM ml_strategies_trading WHERE id = %s",
                     (strategy_id,)
                 )
                 result = cursor.fetchone()
                 cursor.close()
-                db_status = result and result.get('status') == 'running'
-            
-            # 2. Check that thread is actually running
-            with self.lock:
-                thread = self.running_strategies.get(strategy_id)
-                thread_running = thread is not None and thread.is_alive()
-            
-            # 3. If DB says running but thread is not, state is inconsistent (e.g. restore failed after restart)
-            if db_status and not thread_running:
-                logger.warning(f"Strategy {strategy_id} status mismatch: DB=running but thread not running. Updating DB status to stopped.")
-                # Update DB to stopped to avoid zombie strategy state
-                try:
-                    with get_db_connection() as db:
-                        cursor = db.cursor()
-                        cursor.execute(
-                            "UPDATE qd_strategies_trading SET status = 'stopped' WHERE id = %s",
-                            (strategy_id,)
-                        )
-                        db.commit()
-                        cursor.close()
-                except Exception as e:
-                    logger.error(f"Failed to update strategy {strategy_id} status to stopped: {e}")
-                return False
-            
-            # 4. Return True only when both DB and thread agree
-            return db_status and thread_running
-        except Exception as e:
-            logger.error(f"Error checking strategy {strategy_id} running status: {e}")
+                return result and result.get('status') == 'running'
+        except:
             return False
     
     def _init_exchange(
@@ -1140,20 +1121,20 @@ class TradingExecutor:
         leverage: float = None,
         strategy_id: int = None
     ) -> Optional[ccxt.Exchange]:
-        """(Mock) Signal mode does not need real exchange connection."""
+        """(Mock) Signal mode does not require a real exchange connection"""
         return None
     
     def _fetch_latest_kline(self, symbol: str, timeframe: str, limit: int = 500, market_category: str = 'Crypto') -> List[Dict[str, Any]]:
-        """Fetch latest K-line data (prefer cache).
+        """Fetch latest K-line data (preferring cache).
 
         Args:
-            symbol: Trading pair / symbol
+            symbol: Trading pair/code
             timeframe: Time period
-            limit: Number of bars
+            limit: Number of data bars
             market_category: Market type (Crypto, USStock, Forex, Futures)
         """
         try:
-            # Use KlineService for K-line data (handles cache)
+            # Use KlineService to fetch K-line data (handles caching automatically)
             return self.kline_service.get_kline(
                 market=market_category,
                 symbol=symbol,
@@ -1166,12 +1147,12 @@ class TradingExecutor:
             return []
     
     def _fetch_current_price(self, exchange: Any, symbol: str, market_type: str = None, market_category: str = 'Crypto') -> Optional[float]:
-        """Fetch current price (choose data source by market_category).
+        """Fetch current price (selects the correct data source based on market_category).
 
         Args:
             exchange: Exchange instance (None in signal mode)
-            symbol: Trading pair / symbol
-            market_type: Trade type (swap/spot)
+            symbol: Trading pair/code
+            market_type: Trading type (swap/spot)
             market_category: Market type (Crypto, USStock, Forex, Futures)
         """
         # Local in-memory cache first
@@ -1191,7 +1172,8 @@ class TradingExecutor:
                 pass
             
         try:
-            # Select data source by market_category (Crypto, USStock, Forex, Futures)
+            # Select the correct data source based on market_category
+            # Supported: Crypto, USStock, Forex, Futures
             ticker = DataSourceFactory.get_ticker(market_category, symbol)
             if ticker:
                 price = float(ticker.get('last') or ticker.get('close') or 0)
@@ -1219,9 +1201,9 @@ class TradingExecutor:
         timeframe_seconds: int,
     ) -> Optional[Dict[str, Any]]:
         """
-        Server-side stop-loss: when price crosses stop-loss line, emit close_long/close_short signal.
+        Server-side fallback stop-loss: generates close_long/close_short signal when price breaches the stop-loss line.
 
-        Ensures stop-loss fires even when indicator replay omits close_* on last candle or wick bounces prevent re-trigger.
+        Purpose: prevent no-stop-loss scenarios when “indicator replay logic produces no close_* signal on the last K-line” or “wick bounce causes secondary trigger condition to fail”.
         """
         try:
             if trading_config is None:
@@ -1231,7 +1213,7 @@ class TradingExecutor:
             if str(enabled).lower() in ['0', 'false', 'no', 'off']:
                 return None
 
-            # Get current position from local DB for risk control
+            # Get current positions (using local database records for risk control)
             current_positions = self._get_current_positions(strategy_id, symbol)
             if not current_positions:
                 return None
@@ -1270,7 +1252,7 @@ class TradingExecutor:
             tf = int(timeframe_seconds or 60)
             candle_ts = int(now_ts // tf) * tf
 
-            # Long: price below stop-loss
+            # Long: price fell below stop-loss line
             if side == 'long':
                 stop_line = entry_price * (1 - sl)
                 if current_price <= stop_line:
@@ -1282,7 +1264,7 @@ class TradingExecutor:
                         'reason': 'server_stop_loss',
                         'stop_loss_price': stop_line,
                     }
-            # Short: price above stop-loss
+            # Short: price broke above stop-loss line
             elif side == 'short':
                 stop_line = entry_price * (1 + sl)
                 if current_price >= stop_line:
@@ -1456,10 +1438,12 @@ class TradingExecutor:
             return None
     
     def _klines_to_dataframe(self, klines: List[Dict[str, Any]]) -> pd.DataFrame:
-        """Convert K-line data to DataFrame."""
+        """Convert K-line data to DataFrame"""
         if not klines:
+            # Return empty DataFrame with correct columns
             return pd.DataFrame(columns=['open', 'high', 'low', 'close', 'volume'])
-
+        
+        # Create DataFrame
         df = pd.DataFrame(klines)
         
         # Convert time column.
@@ -1471,7 +1455,7 @@ class TradingExecutor:
             df['timestamp'] = pd.to_datetime(df['timestamp'], unit='s', utc=True)
             df = df.set_index('timestamp')
         
-        # Keep only required columns
+        # Ensure only required columns are included
         required_columns = ['open', 'high', 'low', 'close', 'volume']
         available_columns = [col for col in required_columns if col in df.columns]
         if not available_columns:
@@ -1480,22 +1464,29 @@ class TradingExecutor:
         
         df = df[available_columns]
         
-        # Coerce numeric columns to float64
+        # Force convert all numeric columns to float64 type
         for col in ['open', 'high', 'low', 'close', 'volume']:
             if col in df.columns:
+                # First convert to numeric type, then force cast to float64
                 df[col] = pd.to_numeric(df[col], errors='coerce').astype('float64')
-
-        df = df.dropna()
         
+        # Drop rows containing NaN
+        df = df.dropna()
+
         return df
 
     def _update_dataframe_with_current_price(self, df: pd.DataFrame, current_price: float, timeframe: str) -> pd.DataFrame:
-        """Update the last K-line in the DataFrame with current price (for real-time)."""
+        """
+        Update the last K-line in the DataFrame with the current price (for real-time calculation)
+        """
         if df is None or len(df) == 0:
             return df
-
+            
         try:
+            # Get the time of the last K-line
             last_time = df.index[-1]
+            
+            # Calculate the K-line start time corresponding to current time
             from app.data_sources.base import TIMEFRAME_SECONDS
             timeframe_key = timeframe
             if timeframe_key not in TIMEFRAME_SECONDS:
@@ -1508,11 +1499,12 @@ class TradingExecutor:
             last_ts = float(last_time.timestamp())
             now_ts = float(time.time())
             
-            # Current price belongs to this period start
+            # Calculate the K-line start time for the current price
             current_period_start = int(now_ts // tf_seconds) * tf_seconds
-
+            
+            # Check if the last K-line is the current period's
             if abs(last_ts - current_period_start) < 2:
-                # Update last row
+                # Update the last one
                 df.iloc[-1, df.columns.get_loc('close')] = current_price
                 df.iloc[-1, df.columns.get_loc('high')] = max(df.iloc[-1]['high'], current_price)
                 df.iloc[-1, df.columns.get_loc('low')] = min(df.iloc[-1]['low'], current_price)
@@ -1543,9 +1535,10 @@ class TradingExecutor:
         initial_last_add_price: float = 0.0
     ) -> Optional[Dict[str, Any]]:
         """
-        Run indicator code and extract pending signals and prices.
+        Execute indicator code and extract pending signals and trigger prices
         """
         try:
+            # Execute indicator code
             executed_df, exec_env = self._execute_indicator_df(
                 indicator_code, df, trading_config, 
                 initial_highest_price=initial_highest_price,
@@ -1557,11 +1550,13 @@ class TradingExecutor:
             if executed_df is None:
                 return None
             
-            # Get latest highest_price
+            # Extract the latest highest_price
             new_highest_price = exec_env.get('highest_price', 0.0)
-
+            
+            # Extract the last K-line's time
             last_kline_time = int(df.index[-1].timestamp()) if hasattr(df.index[-1], 'timestamp') else int(time.time())
-
+            
+            # Extract pending signals to trigger
             pending_signals = []
             
             # Supported indicator signal formats:
@@ -1596,7 +1591,7 @@ class TradingExecutor:
 
             # Check for 4-way columns after normalization
             if all(col in executed_df.columns for col in ['open_long', 'close_long', 'open_short', 'close_short']):
-                # Anti-repainting: use confirmed candle
+                # Optimization 3: Anti-signal-flicker (Repainting prevention)
                 signal_mode = trading_config.get('signal_mode', 'confirmed') # 'confirmed' or 'aggressive'
                 exit_signal_mode = trading_config.get('exit_signal_mode', 'aggressive') # 'confirmed' or 'aggressive'
                 
@@ -1604,7 +1599,7 @@ class TradingExecutor:
                 exit_check_set = set()
                 
                 if len(executed_df) > 1:
-                    # Always check previous closed candle
+                    # Always check the previous completed K-line
                     entry_check_set.add(len(executed_df) - 2)
                     exit_check_set.add(len(executed_df) - 2)
                 
@@ -1614,14 +1609,16 @@ class TradingExecutor:
                 if exit_signal_mode == 'aggressive' and len(executed_df) > 0:
                     exit_check_set.add(len(executed_df) - 1)
                 
-                # Deterministic index order
+                # Iterate indices uniformly (maintain deterministic ordering)
                 check_indices = sorted(entry_check_set.union(exit_check_set), reverse=True)
-
+                
                 for idx in check_indices:
+                    # Get close price of this K-line (as default trigger price)
                     close_price = float(executed_df['close'].iloc[idx])
+                    # Timestamp of this signal
                     signal_timestamp = int(executed_df.index[idx].timestamp()) if hasattr(executed_df.index[idx], 'timestamp') else last_kline_time
-
-                    # Open long (only in entry_check_set)
+                    
+                    # Open long signal (only checked in entry_check_set)
                     if idx in entry_check_set and executed_df['open_long'].iloc[idx]:
                         trigger_price = close_price
                         position_size = 0.08
@@ -1638,7 +1635,7 @@ class TradingExecutor:
                                 'timestamp': signal_timestamp
                             })
                     
-                    # Close long
+                    # Close long signal
                     if idx in exit_check_set and executed_df['close_long'].iloc[idx]:
                         trigger_price = close_price
                         if not any(s['type'] == 'close_long' and s.get('timestamp') == signal_timestamp for s in pending_signals):
@@ -1649,7 +1646,7 @@ class TradingExecutor:
                                 'timestamp': signal_timestamp
                             })
                     
-                    # Open short
+                    # Open short signal
                     if idx in entry_check_set and executed_df['open_short'].iloc[idx]:
                         trigger_price = close_price
                         position_size = 0.08
@@ -1666,7 +1663,7 @@ class TradingExecutor:
                                 'timestamp': signal_timestamp
                             })
                     
-                    # Close short
+                    # Close short signal
                     if idx in exit_check_set and executed_df['close_short'].iloc[idx]:
                         trigger_price = close_price
                         if not any(s['type'] == 'close_short' and s.get('timestamp') == signal_timestamp for s in pending_signals):
@@ -1677,7 +1674,7 @@ class TradingExecutor:
                                 'timestamp': signal_timestamp
                             })
                             
-                    # Add long
+                    # Add long signal
                     if idx in entry_check_set and 'add_long' in executed_df.columns and executed_df['add_long'].iloc[idx]:
                         trigger_price = close_price
                         position_size = 0.06
@@ -1694,7 +1691,7 @@ class TradingExecutor:
                                 'timestamp': signal_timestamp
                             })
                             
-                    # Add short
+                    # Add short signal
                     if idx in entry_check_set and 'add_short' in executed_df.columns and executed_df['add_short'].iloc[idx]:
                         trigger_price = close_price
                         position_size = 0.06
@@ -1778,9 +1775,9 @@ class TradingExecutor:
         initial_position_count: int = 0,
         initial_last_add_price: float = 0.0
     ) -> tuple[Optional[pd.DataFrame], dict]:
-        """Execute indicator code; return resulting DataFrame and execution env."""
+        """Execute indicator code, return the executed DataFrame and execution environment"""
         try:
-            # Ensure all numeric columns are float64
+            # Ensure all numeric columns in the DataFrame are float64 type
             df = df.copy()
             for col in ['open', 'high', 'low', 'close', 'volume']:
                 if col in df.columns:
@@ -1789,25 +1786,33 @@ class TradingExecutor:
                     else:
                         df[col] = df[col].astype('float64')
             
+            # Drop rows containing NaN
             df = df.dropna()
-
+            
             if len(df) == 0:
                 logger.warning("DataFrame is empty; cannot execute indicator script")
                 return None, {}
-
+            
+            # Initialize signal Series
             signals = pd.Series(0, index=df.index, dtype='float64')
+            
+            # Prepare execution environment
             # Expose the full trading config to indicator scripts so frontend parameters
             # (scale-in/out, position sizing, risk params) can be used directly.
             # Also provide a backtest-modal compatible nested config object: cfg.risk/cfg.scale/cfg.position.
             tc = dict(trading_config or {})
             cfg = self._build_cfg_from_trading_config(tc)
             
-            # Indicator params from trading_config
+            # === Indicator parameter support ===
+            # Get user-configured indicator parameters from trading_config
             user_indicator_params = tc.get('indicator_params', {})
+            # Parse parameters declared in indicator code
             declared_params = IndicatorParamsParser.parse_params(indicator_code)
+            # Merge parameters (user values take priority, otherwise use defaults)
             merged_params = IndicatorParamsParser.merge_params(declared_params, user_indicator_params)
-
-            # Indicator caller (user_id/indicator_id for call_indicator permission)
+            
+            # === Indicator caller support ===
+            # Get user ID and indicator ID (for call_indicator permission check)
             user_id = tc.get('user_id', 1)
             indicator_id = tc.get('indicator_id')
             indicator_caller = IndicatorCaller(user_id, indicator_id)
@@ -1825,8 +1830,8 @@ class TradingExecutor:
                 'trading_config': tc,
                 'config': tc,  # alias
                 'cfg': cfg,    # normalized nested config
-                'params': merged_params,
-                'call_indicator': indicator_caller.call_indicator,
+                'params': merged_params,  # Indicator parameters (new)
+                'call_indicator': indicator_caller.call_indicator,  # Call other indicators (new)
                 'leverage': float(trading_config.get('leverage', 1)),
                 'initial_capital': float(trading_config.get('initial_capital', 1000)),
                 'commission': 0.001,
@@ -1843,7 +1848,7 @@ class TradingExecutor:
                 allowed_modules = ['numpy', 'pandas', 'math', 'json', 'time']
                 if name in allowed_modules or name.split('.')[0] in allowed_modules:
                     return builtins.__import__(name, *args, **kwargs)
-                raise ImportError(f"Import not allowed: {name}")
+                raise ImportError(f"Module import not allowed: {name}")
             
             safe_builtins = {k: getattr(builtins, k) for k in dir(builtins) 
                            if not k.startswith('_') and k not in [
@@ -1859,7 +1864,7 @@ class TradingExecutor:
             pre_import_code = "import numpy as np\nimport pandas as pd\n"
             exec(pre_import_code, exec_env)
             
-            # safe_exec_code is assumed to exist here
+            # Assumes safe_exec_code already exists here
             exec(indicator_code, exec_env)
             
             executed_df = exec_env.get('df', df)
@@ -1881,20 +1886,20 @@ class TradingExecutor:
             return None, {}
     
     def _execute_indicator(self, indicator_code: str, df: pd.DataFrame, trading_config: Dict[str, Any]) -> Optional[Any]:
-        """Backward compatibility."""
+        """Backward compatibility wrapper"""
         executed_df, _ = self._execute_indicator_df(indicator_code, df, trading_config)
         if executed_df is None:
             return None
         return 0
 
     def _get_current_positions(self, strategy_id: int, symbol: str) -> List[Dict[str, Any]]:
-        """Get current positions (supports symbol normalization)."""
+        """Get current positions (supports symbol normalization matching)"""
         try:
             with get_db_connection() as db:
                 cursor = db.cursor()
                 query = """
                     SELECT id, symbol, side, size, entry_price, highest_price, lowest_price
-                    FROM qd_strategy_positions
+                    FROM ml_strategy_positions
                     WHERE strategy_id = %s
                 """
                 cursor.execute(query, (strategy_id,))
@@ -1902,7 +1907,7 @@ class TradingExecutor:
                 
                 matched_positions = []
                 for pos in all_positions:
-                    # Match by prefix only
+                    # Simplified matching logic: only match prefix
                     if pos['symbol'].split(':')[0] == symbol.split(':')[0]:
                         matched_positions.append(pos)
                 
@@ -1913,7 +1918,7 @@ class TradingExecutor:
             return []
 
     def _execute_trading_logic(self, *args, **kwargs):
-        """Deprecated."""
+        """Deprecated"""
         pass
     
     def _execute_signal(
@@ -1940,14 +1945,14 @@ class TradingExecutor:
         ai_model_config: Optional[Dict[str, Any]] = None,
         signal_ts: int = 0,
     ):
-        """Execute a concrete trading signal."""
+        """Execute a specific trading signal"""
         try:
             # Hard state-machine guard (double safety in addition to loop-level filtering).
             state = self._position_state(current_positions)
             if not self._is_signal_allowed(state, signal_type):
                 return False
 
-            # 1. Check trade direction limit
+            # 1. Check trade direction restrictions
             if market_type == 'spot' and 'short' in signal_type:
                  return False
 
@@ -1966,8 +1971,8 @@ class TradingExecutor:
                     # Best-effort persist a browser notification so UI can show "HOLD due to AI filter".
                     reason = (ai_info or {}).get("reason") or "ai_filter_rejected"
                     ai_decision = (ai_info or {}).get("ai_decision") or ""
-                    title = f"AI filter blocked entry | {symbol}"
-                    msg = f"Strategy signal={sig}, AI decision={ai_decision or 'UNKNOWN'}, reason={reason}; HOLD (no order)"
+                    title = f"AI Filter Blocked Entry | {symbol}"
+                    msg = f"Strategy signal={sig}, AI decision={ai_decision or 'UNKNOWN'}, reason={reason}; HOLD (no order placed)"
                     self._persist_browser_notification(
                         strategy_id=strategy_id,
                         symbol=symbol,
@@ -1990,7 +1995,7 @@ class TradingExecutor:
                     )
                     return False
 
-            # 2. Compute order size
+            # 2. Calculate order quantity
             available_capital = self._get_available_capital(strategy_id, initial_capital)
             
             amount = 0.0
@@ -2033,11 +2038,12 @@ class TradingExecutor:
                 else:
                     amount = reduce_amount
             
-            # 3. Check opposite position (single-position logic)
+            # 3. Check opposite positions (single-direction position logic)
+            # ... (simplified handling, assume no opposite or handled by user) ...
 
             # 4. Execute order enqueue (PendingOrderWorker will dispatch notifications in signal mode)
             if 'close' in sig:
-                # Close: find matching position size
+                # Close position logic: find corresponding position size
                 pos = next((p for p in current_positions if p.get('side') and p['side'] in signal_type), None)
                 if not pos:
                     return False
@@ -2069,7 +2075,7 @@ class TradingExecutor:
                 if str(execution_mode or "").strip().lower() == "live":
                     return True
 
-                # Update DB state (signal mode / local simulation)
+                # Update database state (signal mode / local simulation)
                 if 'open' in sig or 'add' in sig:
                     self._record_trade(
                         strategy_id=strategy_id, symbol=symbol, type=signal_type,
@@ -2077,7 +2083,7 @@ class TradingExecutor:
                     )
                     side = 'short' if 'short' in signal_type else 'long'
                     
-                    # Find existing position for avg price
+                    # Find existing position to calculate average price
                     old_pos = next((p for p in current_positions if p['side'] == side), None)
                     new_size = amount
                     new_entry = current_price
@@ -2093,7 +2099,7 @@ class TradingExecutor:
                     )
                 elif sig.startswith("reduce_"):
                     # Partial scale-out: reduce position size, keep entry price unchanged.
-                    # Partial close P&L in signal mode
+                    # Calculate partial close PnL in signal mode
                     side = 'short' if 'short' in signal_type else 'long'
                     old_pos = next((p for p in current_positions if p.get('side') == side), None)
                     if not old_pos:
@@ -2101,7 +2107,7 @@ class TradingExecutor:
                     old_size = float(old_pos.get('size') or 0.0)
                     old_entry = float(old_pos.get('entry_price') or 0.0)
                     
-                    # Reduce-size P&L (signal mode, no fee)
+                    # Calculate PnL for the reduced portion (signal mode, excluding fees)
                     reduce_profit = None
                     if old_entry > 0 and amount > 0:
                         if side == 'long':
@@ -2124,11 +2130,11 @@ class TradingExecutor:
                             size=new_size, entry_price=old_entry, current_price=current_price
                         )
                 elif 'close' in sig:
-                    # Close P&L in signal mode
+                    # Calculate close position PnL in signal mode
                     side = 'short' if 'short' in signal_type else 'long'
                     old_pos = next((p for p in current_positions if p.get('side') == side), None)
                     
-                    # P&L (signal mode, no fee)
+                    # Calculate PnL (signal mode, excluding fees)
                     close_profit = None
                     if old_pos:
                         entry_price = float(old_pos.get('entry_price') or 0)
@@ -2215,7 +2221,7 @@ class TradingExecutor:
         language = str(language or "zh-CN")
 
         try:
-            # Use FastAnalysisService (single LLM call, faster and more stable)
+            # Use the new FastAnalysisService (single LLM call, faster and more stable)
             from app.services.fast_analysis import get_fast_analysis_service
 
             service = get_fast_analysis_service()
@@ -2289,7 +2295,7 @@ class TradingExecutor:
         payload: Optional[Dict[str, Any]] = None,
         user_id: int = None,
     ) -> None:
-        """Best-effort persist notification row for the frontend notifications panel (browser channel)."""
+        """Best-effort persist notification row for the frontend notification panel (browser channel)."""
         try:
             now = int(time.time())
             # Get user_id from strategy if not provided
@@ -2297,7 +2303,7 @@ class TradingExecutor:
                 try:
                     with get_db_connection() as db:
                         cur = db.cursor()
-                        cur.execute("SELECT user_id FROM qd_strategies_trading WHERE id = ?", (strategy_id,))
+                        cur.execute("SELECT user_id FROM ml_strategies_trading WHERE id = ?", (strategy_id,))
                         row = cur.fetchone()
                         cur.close()
                     user_id = int((row or {}).get('user_id') or 1)
@@ -2307,7 +2313,7 @@ class TradingExecutor:
                 cur = db.cursor()
                 cur.execute(
                     """
-                    INSERT INTO qd_strategy_notifications
+                    INSERT INTO ml_strategy_notifications
                     (user_id, strategy_id, symbol, signal_type, channels, title, message, payload_json, created_at)
                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, NOW())
                     """,
@@ -2534,7 +2540,7 @@ class TradingExecutor:
                 # Get user_id from strategy
                 user_id = 1
                 try:
-                    cur.execute("SELECT user_id FROM qd_strategies_trading WHERE id = %s", (strategy_id,))
+                    cur.execute("SELECT user_id FROM ml_strategies_trading WHERE id = %s", (strategy_id,))
                     row = cur.fetchone()
                     user_id = int((row or {}).get('user_id') or 1)
                 except Exception:
@@ -2582,27 +2588,27 @@ class TradingExecutor:
         pass
 
     def _get_available_capital(self, strategy_id: int, initial_capital: float) -> float:
-        """Get available balance."""
+        """Get available capital"""
         return initial_capital
 
     def _calculate_current_equity(self, strategy_id: int, initial_capital: float) -> float:
         return initial_capital
 
     def _record_trade(self, strategy_id: int, symbol: str, type: str, price: float, amount: float, value: float, profit: float = None, commission: float = None):
-        """Record trade to database."""
+        """Record trade to database"""
         try:
             # Get user_id from strategy
             user_id = 1
             with get_db_connection() as db:
                 cursor = db.cursor()
                 try:
-                    cursor.execute("SELECT user_id FROM qd_strategies_trading WHERE id = %s", (strategy_id,))
+                    cursor.execute("SELECT user_id FROM ml_strategies_trading WHERE id = %s", (strategy_id,))
                     row = cursor.fetchone()
                     user_id = int((row or {}).get('user_id') or 1)
                 except Exception:
                     pass
                 query = """
-                    INSERT INTO qd_strategy_trades (
+                    INSERT INTO ml_strategy_trades (
                         user_id, strategy_id, symbol, type, price, amount, value, commission, profit, created_at
                     ) VALUES (
                         %s, %s, %s, %s, %s, %s, %s, %s, %s, NOW()
@@ -2625,21 +2631,21 @@ class TradingExecutor:
         highest_price: float = 0.0,
         lowest_price: float = 0.0,
     ):
-        """Update position state."""
+        """Update position status"""
         try:
             # Get user_id from strategy
             user_id = 1
             with get_db_connection() as db:
                 cursor = db.cursor()
                 try:
-                    cursor.execute("SELECT user_id FROM qd_strategies_trading WHERE id = %s", (strategy_id,))
+                    cursor.execute("SELECT user_id FROM ml_strategies_trading WHERE id = %s", (strategy_id,))
                     row = cursor.fetchone()
                     user_id = int((row or {}).get('user_id') or 1)
                 except Exception:
                     pass
-                # Simple: Update or Insert
+                # Simplified: direct Update or Insert
                 upsert_query = """
-                    INSERT INTO qd_strategy_positions (
+                    INSERT INTO ml_strategy_positions (
                         user_id, strategy_id, symbol, side, size, entry_price, current_price, highest_price, lowest_price, updated_at
                     ) VALUES (
                         %s, %s, %s, %s, %s, %s, %s, %s, %s, NOW()
@@ -2647,8 +2653,8 @@ class TradingExecutor:
                         size = excluded.size,
                         entry_price = excluded.entry_price,
                         current_price = excluded.current_price,
-                        highest_price = CASE WHEN excluded.highest_price > 0 THEN excluded.highest_price ELSE qd_strategy_positions.highest_price END,
-                        lowest_price = CASE WHEN excluded.lowest_price > 0 THEN excluded.lowest_price ELSE qd_strategy_positions.lowest_price END,
+                        highest_price = CASE WHEN excluded.highest_price > 0 THEN excluded.highest_price ELSE ml_strategy_positions.highest_price END,
+                        lowest_price = CASE WHEN excluded.lowest_price > 0 THEN excluded.lowest_price ELSE ml_strategy_positions.lowest_price END,
                         updated_at = NOW()
                 """
                 cursor.execute(upsert_query, (
@@ -2660,11 +2666,11 @@ class TradingExecutor:
             logger.error(f"Failed to update position: {e}")
 
     def _close_position(self, strategy_id: int, symbol: str, side: str):
-        """Close position: remove position record."""
+        """Close position: delete position record"""
         try:
             with get_db_connection() as db:
                 cursor = db.cursor()
-                cursor.execute("DELETE FROM qd_strategy_positions WHERE strategy_id = %s AND symbol = %s AND side = %s", (strategy_id, symbol, side))
+                cursor.execute("DELETE FROM ml_strategy_positions WHERE strategy_id = %s AND symbol = %s AND side = %s", (strategy_id, symbol, side))
                 db.commit()
                 cursor.close()
         except Exception as e:
@@ -2674,11 +2680,11 @@ class TradingExecutor:
          pass
 
     def _update_positions(self, strategy_id: int, symbol: str, current_price: float):
-        """Update current price for all positions."""
+        """Update current price for all positions"""
         try:
             with get_db_connection() as db:
                 cursor = db.cursor()
-                cursor.execute("UPDATE qd_strategy_positions SET current_price = %s WHERE strategy_id = %s AND symbol = %s", (current_price, strategy_id, symbol))
+                cursor.execute("UPDATE ml_strategy_positions SET current_price = %s WHERE strategy_id = %s AND symbol = %s", (current_price, strategy_id, symbol))
                 db.commit()
                 cursor.close()
         except Exception:
@@ -2688,20 +2694,20 @@ class TradingExecutor:
         try:
             with get_db_connection() as db:
                 cursor = db.cursor()
-                cursor.execute("SELECT code FROM qd_indicator_codes WHERE id = %s", (indicator_id,))
+                cursor.execute("SELECT code FROM ml_indicator_codes WHERE id = %s", (indicator_id,))
                 result = cursor.fetchone()
                 return result['code'] if result else None
         except:
             return None
     
     def _get_all_positions(self, strategy_id: int) -> List[Dict[str, Any]]:
-        """Get all positions for strategy (for cross-sectional strategy)."""
+        """Get all positions for a strategy (used by cross-sectional strategies)"""
         try:
             with get_db_connection() as db:
                 cursor = db.cursor()
                 cursor.execute("""
                     SELECT id, symbol, side, size, entry_price, current_price, highest_price, lowest_price
-                    FROM qd_strategy_positions
+                    FROM ml_strategy_positions
                     WHERE strategy_id = %s
                 """, (strategy_id,))
                 return cursor.fetchall() or []
@@ -2710,12 +2716,12 @@ class TradingExecutor:
             return []
     
     def _should_rebalance(self, strategy_id: int, rebalance_frequency: str) -> bool:
-        """Check if rebalance is due."""
+        """Check if rebalancing is needed"""
         try:
             with get_db_connection() as db:
                 cursor = db.cursor()
                 cursor.execute("""
-                    SELECT last_rebalance_at FROM qd_strategies_trading WHERE id = %s
+                    SELECT last_rebalance_at FROM ml_strategies_trading WHERE id = %s
                 """, (strategy_id,))
                 result = cursor.fetchone()
                 if not result or not result.get('last_rebalance_at'):
@@ -2741,14 +2747,14 @@ class TradingExecutor:
             return True
     
     def _update_last_rebalance(self, strategy_id: int):
-        """Update last rebalance time."""
+        """Update last rebalance time"""
         try:
             with get_db_connection() as db:
                 cursor = db.cursor()
                 # Try to update, if column doesn't exist, ignore
                 try:
                     cursor.execute("""
-                        UPDATE qd_strategies_trading 
+                        UPDATE ml_strategies_trading 
                         SET last_rebalance_at = NOW() 
                         WHERE id = %s
                     """, (strategy_id,))
@@ -2769,7 +2775,7 @@ class TradingExecutor:
         timeframe: str
     ) -> Optional[Dict[str, Any]]:
         """
-        Run cross-sectional strategy indicator; return scores and rankings for all symbols
+        Execute cross-sectional strategy indicator, return scores and rankings for all symbols
         """
         try:
             # Fetch K-line data for all symbols
@@ -2789,12 +2795,12 @@ class TradingExecutor:
                 logger.error("No data available for cross-sectional strategy")
                 return None
             
-            # Prepare execution env
+            # Prepare execution environment
             exec_env = {
                 'symbols': list(all_data.keys()),
                 'data': all_data,  # {symbol: df}
-                'scores': {},
-                'rankings': [],
+                'scores': {},  # For storing scores
+                'rankings': [],  # For storing rankings
                 'np': np,
                 'pd': pd,
                 'trading_config': trading_config,
@@ -2817,7 +2823,7 @@ class TradingExecutor:
             scores = exec_env.get('scores', {})
             rankings = exec_env.get('rankings', [])
             
-            # If no rankings provided, sort by scores
+            # If rankings are not provided, sort by scores
             if not rankings and scores:
                 rankings = sorted(scores.keys(), key=lambda x: scores.get(x, 0), reverse=True)
             
@@ -2838,12 +2844,12 @@ class TradingExecutor:
         trading_config: Dict[str, Any]
     ) -> List[Dict[str, Any]]:
         """
-        Generate cross-sectional strategy signals from rankings
+        Generate cross-sectional strategy signals based on ranking results
         """
         portfolio_size = trading_config.get('portfolio_size', 10)
         long_ratio = float(trading_config.get('long_ratio', 0.5))
         
-        # Select symbols to hold
+        # Select position symbols
         long_count = int(portfolio_size * long_ratio)
         short_count = portfolio_size - long_count
         
@@ -2860,9 +2866,9 @@ class TradingExecutor:
         # Generate long signals
         for symbol in long_symbols:
             if symbol not in current_long:
-                # If no long position, open long
+                # If no long position currently, open long
                 if symbol in current_short:
-                    # If short, close short then open long
+                    # If currently short, close short first then open long
                     signals.append({
                         'symbol': symbol,
                         'type': 'close_short',
@@ -2874,7 +2880,7 @@ class TradingExecutor:
                     'score': scores.get(symbol, 0)
                 })
         
-        # Close longs not in the long list
+        # Close long positions not in the long list
         for symbol in current_long:
             if symbol not in long_symbols:
                 signals.append({
@@ -2886,9 +2892,9 @@ class TradingExecutor:
         # Generate short signals
         for symbol in short_symbols:
             if symbol not in current_short:
-                # If no short position, open short
+                # If no short position currently, open short
                 if symbol in current_long:
-                    # If long, close long then open short
+                    # If currently long, close long first then open short
                     signals.append({
                         'symbol': symbol,
                         'type': 'close_long',
@@ -2900,7 +2906,7 @@ class TradingExecutor:
                     'score': scores.get(symbol, 0)
                 })
         
-        # Close shorts not in the short list
+        # Close short positions not in the short list
         for symbol in current_short:
             if symbol not in short_symbols:
                 signals.append({
@@ -2962,13 +2968,13 @@ class TradingExecutor:
                         continue
                 last_tick_time = current_time
                 
-                # Check if rebalance needed
+                # Check if rebalancing is needed
                 if not self._should_rebalance(strategy_id, rebalance_frequency):
                     continue
                 
                 logger.info(f"Cross-sectional strategy {strategy_id} rebalancing...")
                 
-                # Run cross-sectional indicator
+                # Execute cross-sectional indicator
                 result = self._execute_cross_sectional_indicator(
                     indicator_code, symbol_list, trading_config, market_category, timeframe
                 )

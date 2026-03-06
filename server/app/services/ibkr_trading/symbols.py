@@ -1,7 +1,7 @@
 """
 Symbol Mapping and Conversion
 
-Converts Zing system symbols to IB contract format.
+Converts MarketLabs system symbols to IB contract format.
 """
 
 from typing import Tuple, Optional

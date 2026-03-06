@@ -36,15 +36,11 @@ from app.services.live_trading.bitfinex import BitfinexClient
 from app.services.live_trading.bitfinex import BitfinexDerivativesClient
 from app.services.live_trading.symbols import to_okx_swap_inst_id
 from app.services.live_trading.symbols import to_gate_currency_pair
-from app.utils.db import get_db_connection, is_postgres_available
+from app.utils.db import get_db_connection
 from app.utils.logger import get_logger
 
 # Lazy import IBKR to avoid ImportError if ib_insync not installed
 IBKRClient = None
-
-# Rate-limit "PostgreSQL unavailable" warnings (once per 5 minutes)
-_last_pg_unavailable_log = 0.0
-_PG_UNAVAILABLE_LOG_INTERVAL = 300.0
 
 # Lazy import MT5 to avoid ImportError if MetaTrader5 not installed
 MT5Client = None
@@ -141,7 +137,7 @@ class PendingOrderWorker:
     def _sync_positions_best_effort(self, target_strategy_id: Optional[int] = None) -> None:
         """
         Best-effort reconciliation:
-        - If exchange position is flat, delete local row from qd_strategy_positions.
+        - If exchange position is flat, delete local row from ml_strategy_positions.
         - If exchange position size differs, update local size (optional best-effort).
 
         This prevents "ghost positions" when positions are closed externally on the exchange.
@@ -152,11 +148,11 @@ class PendingOrderWorker:
             cur = db.cursor()
             if target_strategy_id:
                 cur.execute(
-                    "SELECT id, strategy_id, symbol, side, size, entry_price FROM qd_strategy_positions WHERE strategy_id = %s ORDER BY updated_at DESC", 
+                    "SELECT id, strategy_id, symbol, side, size, entry_price FROM ml_strategy_positions WHERE strategy_id = %s ORDER BY updated_at DESC", 
                     (int(target_strategy_id),)
                 )
             else:
-                cur.execute("SELECT id, strategy_id, symbol, side, size, entry_price FROM qd_strategy_positions ORDER BY updated_at DESC")
+                cur.execute("SELECT id, strategy_id, symbol, side, size, entry_price FROM ml_strategy_positions ORDER BY updated_at DESC")
             rows = cur.fetchall() or []
             cur.close()
 
@@ -187,7 +183,7 @@ class PendingOrderWorker:
             with get_db_connection() as db:
                 cur = db.cursor()
                 # Fetch all strategies configured for LIVE execution
-                cur.execute("SELECT id FROM qd_strategies_trading WHERE status = 'running' AND execution_mode = 'live'")
+                cur.execute("SELECT id FROM ml_strategies_trading WHERE status = 'running' AND execution_mode = 'live'")
                 active_rows = cur.fetchall() or []
                 cur.close()
             
@@ -208,38 +204,15 @@ class PendingOrderWorker:
             try:
                 sc = load_strategy_configs(int(sid))
                 exec_mode = (sc.get("execution_mode") or "").strip().lower()
-                # In signal mode, still sync when target_strategy_id is set (e.g. on strategy start)
-                # to clear "ghost" positions (user closed on exchange but DB still has the record)
-                if exec_mode != "live" and not target_strategy_id:
-                    logger.debug(f"[PositionSync] Strategy {sid} skipped: execution_mode='{exec_mode}' (needs 'live' or explicit target)")
+                if exec_mode != "live":
+                    logger.debug(f"[PositionSync] Strategy {sid} skipped: execution_mode='{exec_mode}' (needs 'live')")
                     continue
-                sync_user_id = int(sc.get("user_id") or 1)
-                exchange_config = resolve_exchange_config(sc.get("exchange_config") or {}, user_id=sync_user_id)
+                exchange_config = resolve_exchange_config(sc.get("exchange_config") or {})
                 safe_cfg = safe_exchange_config_for_log(exchange_config)
-                
-                # Skip sync if exchange_id is missing or invalid (signal mode may have no exchange config)
-                exchange_id = str(exchange_config.get("exchange_id") or "").strip().lower()
-                if not exchange_id:
-                    logger.debug(f"[PositionSync] Strategy {sid} skipped: exchange_id is empty (signal mode or no exchange config)")
-                    continue
-                
                 market_type = (sc.get("market_type") or exchange_config.get("market_type") or "swap")
                 market_type = str(market_type or "swap").strip().lower()
                 if market_type in ("futures", "future", "perp", "perpetual"):
                     market_type = "swap"
-                
-                # Get strategy's trading symbol(s) to filter positions
-                # Only sync positions for symbols that this strategy actually trades
-                strategy_symbol = (sc.get("symbol") or "").strip()
-                trading_config = sc.get("trading_config") or {}
-                symbol_list = trading_config.get("symbol_list") or []
-                # Normalize symbol list: convert to set for fast lookup
-                allowed_symbols = set()
-                if strategy_symbol:
-                    allowed_symbols.add(strategy_symbol.upper())
-                for sym in symbol_list:
-                    if sym and isinstance(sym, str):
-                        allowed_symbols.add(sym.strip().upper())
 
                 # Lazy import MT5 here to allow elif chain later
                 global MT5Client
@@ -250,12 +223,7 @@ class PendingOrderWorker:
                     except ImportError:
                         pass
 
-                # Try to create client; skip on failure (e.g. config error)
-                try:
-                    client = create_client(exchange_config, market_type=market_type)
-                except Exception as e:
-                    logger.debug(f"[PositionSync] Strategy {sid} skipped: failed to create client (exchange_id={exchange_id}): {e}")
-                    continue
+                client = create_client(exchange_config, market_type=market_type)
                 
                 # Build an "exchange snapshot" per symbol+side
                 exch_size: Dict[str, Dict[str, float]] = {}  # {symbol: {long: size, short: size}}
@@ -313,32 +281,6 @@ class PendingOrderWorker:
                             except Exception:
                                 pass
                             exch_size.setdefault(hb_sym, {"long": 0.0, "short": 0.0})[side] = float(qty_base)
-                            
-                            # Extract entry price from OKX position data
-                            # OKX API returns avgPx (average price) or avgPxEp (average price in equity) for positions
-                            try:
-                                # Try avgPx first (average entry price)
-                                avg_px = p.get("avgPx")
-                                if avg_px:
-                                    entry_price = float(avg_px)
-                                else:
-                                    # Fallback to avgPxEp (average price in equity)
-                                    avg_px_ep = p.get("avgPxEp")
-                                    if avg_px_ep:
-                                        entry_price = float(avg_px_ep)
-                                    else:
-                                        # Fallback to last price if available
-                                        last_px = p.get("last")
-                                        entry_price = float(last_px) if last_px else 0.0
-                                
-                                if entry_price > 0:
-                                    exch_entry_price.setdefault(hb_sym, {"long": 0.0, "short": 0.0})[side] = entry_price
-                                    logger.debug(f"[PositionSync] OKX {hb_sym} {side}: entry_price={entry_price} from avgPx={p.get('avgPx')} or avgPxEp={p.get('avgPxEp')}")
-                                else:
-                                    logger.warning(f"[PositionSync] OKX {hb_sym} {side}: Could not extract entry price from position data: {p}")
-                            except Exception as e:
-                                logger.warning(f"[PositionSync] Failed to extract entry price for OKX {hb_sym} {side}: {e}")
-                                # Don't set entry_price, will remain 0.0
 
                 elif isinstance(client, BitgetMixClient) and market_type == "swap":
                     product_type = str(exchange_config.get("product_type") or exchange_config.get("productType") or "USDT-FUTURES")
@@ -557,23 +499,10 @@ class PendingOrderWorker:
                             to_update.append({"id": rid, "size": exch_qty, "entry_price": exch_price})
 
                 # [New Feature] Detect positions that exist on exchange but not in local DB, and insert them.
-                # IMPORTANT: Only insert positions for symbols that this strategy actually trades
-                # This prevents syncing positions from quick trade or other sources
                 to_insert: List[Dict[str, Any]] = []
                 local_symbols_sides = {(str(r.get("symbol") or "").strip(), str(r.get("side") or "").strip().lower()) for r in plist}
                 
                 for _sym, _sides_map in exch_size.items():
-                    # Filter: only sync positions for symbols that this strategy trades
-                    # If strategy has no symbol configured, skip auto-insert to prevent syncing quick trade positions
-                    _sym_upper = _sym.strip().upper()
-                    if allowed_symbols and _sym_upper not in allowed_symbols:
-                        logger.debug(f"[PositionSync] Skipping {_sym}: not in strategy's symbol list (strategy trades: {allowed_symbols})")
-                        continue
-                    elif not allowed_symbols:
-                        # Strategy has no symbol configured - skip to prevent syncing unrelated positions
-                        logger.debug(f"[PositionSync] Skipping {_sym}: strategy has no symbol configured (preventing quick trade position sync)")
-                        continue
-                    
                     for _side, _qty in _sides_map.items():
                         if _qty > 1e-12 and (_sym, _side) not in local_symbols_sides:
                             # Exchange has this position but local DB does not
@@ -593,24 +522,24 @@ class PendingOrderWorker:
                 with get_db_connection() as db:
                     cur = db.cursor()
                     for rid in to_delete_ids:
-                        cur.execute("DELETE FROM qd_strategy_positions WHERE id = %s", (int(rid),))
+                        cur.execute("DELETE FROM ml_strategy_positions WHERE id = %s", (int(rid),))
                     for u in to_update:
                         cur.execute(
-                            "UPDATE qd_strategy_positions SET size = %s, entry_price = %s, updated_at = NOW() WHERE id = %s", 
+                            "UPDATE ml_strategy_positions SET size = %s, entry_price = %s, updated_at = NOW() WHERE id = %s", 
                             (float(u["size"]), float(u["entry_price"]), int(u["id"]))
                         )
                     for ins in to_insert:
                         # Get user_id from strategy
                         ins_user_id = 1
                         try:
-                            cur.execute("SELECT user_id FROM qd_strategies_trading WHERE id = %s", (int(ins["strategy_id"]),))
+                            cur.execute("SELECT user_id FROM ml_strategies_trading WHERE id = %s", (int(ins["strategy_id"]),))
                             strategy_row = cur.fetchone()
                             if strategy_row and strategy_row.get("user_id"):
                                 ins_user_id = int(strategy_row["user_id"])
                         except Exception:
                             pass
                         cur.execute(
-                            """INSERT INTO qd_strategy_positions (user_id, strategy_id, symbol, side, size, entry_price, updated_at)
+                            """INSERT INTO ml_strategy_positions (user_id, strategy_id, symbol, side, size, entry_price, updated_at)
                                VALUES (%s, %s, %s, %s, %s, %s, NOW())""",
                             (ins_user_id, int(ins["strategy_id"]), str(ins["symbol"]), str(ins["side"]), float(ins["size"]), float(ins["entry_price"]))
                         )
@@ -627,17 +556,6 @@ class PendingOrderWorker:
                 logger.error(f"position sync: strategy_id={sid} failed: {e}", exc_info=True)
 
     def _fetch_pending_orders(self, limit: int = 50) -> List[Dict[str, Any]]:
-        global _last_pg_unavailable_log
-        if not is_postgres_available():
-            import time
-            now = time.time()
-            if now - _last_pg_unavailable_log >= _PG_UNAVAILABLE_LOG_INTERVAL:
-                logger.debug(
-                    "fetch_pending_orders skipped: PostgreSQL not available "
-                    "(install psycopg2 and set DATABASE_URL)."
-                )
-                _last_pg_unavailable_log = now
-            return []
         try:
             # Best-effort: requeue stale "processing" rows to avoid deadlocks after crashes.
             try:
@@ -682,15 +600,7 @@ class PendingOrderWorker:
                 cur.close()
             return rows
         except Exception as e:
-            err_msg = str(e).lower()
-            if "psycopg2" in err_msg or "postgresql" in err_msg or "cannot use postgres" in err_msg:
-                import time
-                now = time.time()
-                if now - _last_pg_unavailable_log >= _PG_UNAVAILABLE_LOG_INTERVAL:
-                    logger.debug("fetch_pending_orders failed (PostgreSQL unavailable): %s", e)
-                    _last_pg_unavailable_log = now
-            else:
-                logger.warning("fetch_pending_orders failed: %s", e)
+            logger.warning(f"fetch_pending_orders failed: {e}")
             return []
 
     def _mark_processing(self, order_id: int) -> bool:
@@ -805,7 +715,7 @@ class PendingOrderWorker:
             with get_db_connection() as db:
                 cur = db.cursor()
                 cur.execute(
-                    "SELECT notification_config FROM qd_strategies_trading WHERE id = ?",
+                    "SELECT notification_config FROM ml_strategies_trading WHERE id = ?",
                     (int(strategy_id),),
                 )
                 row = cur.fetchone() or {}
@@ -827,7 +737,7 @@ class PendingOrderWorker:
         try:
             with get_db_connection() as db:
                 cur = db.cursor()
-                cur.execute("SELECT strategy_name FROM qd_strategies_trading WHERE id = ?", (int(strategy_id),))
+                cur.execute("SELECT strategy_name FROM ml_strategies_trading WHERE id = ?", (int(strategy_id),))
                 row = cur.fetchone() or {}
                 cur.close()
             return str(row.get("strategy_name") or "").strip()
@@ -922,8 +832,7 @@ class PendingOrderWorker:
             return
 
         cfg = load_strategy_configs(strategy_id)
-        strategy_user_id = int(cfg.get("user_id") or 1)
-        exchange_config = resolve_exchange_config(cfg.get("exchange_config") or {}, user_id=strategy_user_id)
+        exchange_config = resolve_exchange_config(cfg.get("exchange_config") or {})
         safe_cfg = safe_exchange_config_for_log(exchange_config)
         exchange_id = str(exchange_config.get("exchange_id") or "").strip().lower()
         market_category = str(cfg.get("market_category") or "Crypto").strip()
@@ -1039,7 +948,7 @@ class PendingOrderWorker:
                 # OKX max length is 32.
                 return base[:32]
             # Other exchanges are more permissive.
-            return f"qd_{int(strategy_id)}_{int(order_id)}{('_' + ph) if ph else ''}"
+            return f"ml_{int(strategy_id)}_{int(order_id)}{('_' + ph) if ph else ''}"
 
         client_oid = _make_client_oid("")
         sig = str(signal_type or "").strip().lower()
@@ -1119,7 +1028,7 @@ class PendingOrderWorker:
                         qry_sym = f"{qry_sym[:-4]}/USDT"
                     
                     cur.execute(
-                        "SELECT size FROM qd_strategy_positions WHERE strategy_id = %s AND symbol = %s AND side = %s",
+                        "SELECT size FROM ml_strategy_positions WHERE strategy_id = %s AND symbol = %s AND side = %s",
                         (strategy_id, qry_sym, pos_side)
                     )
                     row = cur.fetchone()
@@ -2188,7 +2097,7 @@ class PendingOrderWorker:
                 symbol=symbol,
                 side=action,
                 volume=amount,
-                comment="Zing",
+                comment="MarketLabs",
             )
 
             if not result.success:

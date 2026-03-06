@@ -1,9 +1,9 @@
 """
-Billing APIs - 会员购买/套餐配置（Mock支付）
+Billing APIs - Membership Purchase / Plan Configuration (Mock Payment)
 
-当前版本先实现“快速商业闭环”的最小可用：
-- 从系统设置(.env)读取 3 档会员（包月/包年/永久）金额与赠送积分配置
-- 用户在前端购买后立即开通/发放积分（后续可替换为真实支付网关）
+Current version implements the minimum viable "quick business loop":
+- Reads 3 membership tiers (monthly/yearly/lifetime) amounts and bonus credits config from system settings (.env)
+- User purchases on the frontend and membership is activated / credits are issued immediately (can be replaced with a real payment gateway later)
 """
 
 from flask import Blueprint, jsonify, request, g
@@ -59,7 +59,7 @@ def purchase_membership():
 
 
 # =========================
-# USDT Pay (方案B)
+# USDT Pay (Plan B)
 # =========================
 
 

@@ -8,7 +8,7 @@ Provides aggregated global market data including:
 - Market heatmap data (crypto, stocks, forex)
 - Economic calendar with impact indicators
 - Fear & Greed Index / VIX
-- Financial news (multilingual)
+- Financial news
 
 Endpoints:
 - GET /api/global-market/overview       - Global market overview
@@ -38,35 +38,33 @@ logger = get_logger(__name__)
 global_market_bp = Blueprint("global_market", __name__)
 
 # Cache for market data (simple in-memory cache)
-# In multi-user setups, sensible cache TTLs reduce API load
+# In multi-user scenarios, proper caching significantly reduces API requests
 _cache: Dict[str, Dict[str, Any]] = {}
 _cache_ttl = 60  # Default 60 seconds cache
 
-# Cache TTL (seconds)
+# Cache TTL configuration (seconds)
 CACHE_TTL = {
-    "crypto_heatmap": 300,       # 5 min - crypto moves fast but heatmap need not be real-time
-    "forex_pairs": 120,          # 2 min - forex intraday
-    "stock_indices": 120,        # 2 min - indices
-    "market_overview": 120,      # 2 min - overview
-    "market_heatmap": 120,       # 2 min - heatmap
-    "commodities": 120,         # 2 min - commodities
-    "market_news": 180,          # 3 min - news
-    "economic_calendar": 3600,   # 1 hour - calendar
-    "market_sentiment": 21600,   # 6 hours - sentiment
-    "trading_opportunities": 3600,  # 1 hour
+    "crypto_heatmap": 300,      # 5min - crypto changes fast but heatmap doesn't need real-time
+    "forex_pairs": 120,          # 2min - forex intraday volatility is low
+    "stock_indices": 120,        # 2min - indices change slowly
+    "market_overview": 120,      # 2min - overview data
+    "market_heatmap": 120,       # 2min - heatmap
+    "commodities": 120,          # 2min - commodities
+    "market_news": 180,          # 3min - news
+    "economic_calendar": 3600,   # 1hr - calendar events
+    "market_sentiment": 21600,   # 6hr - macro sentiment changes slowly
+    "trading_opportunities": 3600, # 1hr - update hourly
 }
-
 
 def _get_cached(key: str, ttl: int = None) -> Optional[Any]:
     """Get cached data if not expired."""
     if key in _cache:
         entry = _cache[key]
-        # Prefer passed ttl, then CACHE_TTL for key, then default
+        # Priority: passed ttl > CACHE_TTL config > default value
         cache_ttl = ttl or CACHE_TTL.get(key, entry.get("ttl", _cache_ttl))
         if time.time() - entry.get("ts", 0) < cache_ttl:
             return entry.get("data")
     return None
-
 
 def _set_cached(key: str, data: Any, ttl: int = None):
     """Set cache entry."""
@@ -76,13 +74,11 @@ def _set_cached(key: str, data: Any, ttl: int = None):
         "ttl": ttl or CACHE_TTL.get(key, _cache_ttl)
     }
 
-
 def _safe_float(v: Any, default: float = 0.0) -> float:
     try:
         return float(v)
     except Exception:
         return default
-
 
 # ============ Data Fetchers ============
 
@@ -125,7 +121,6 @@ def _fetch_crypto_prices_ccxt() -> List[Dict[str, Any]]:
     except Exception as e:
         logger.error(f"Failed to fetch crypto prices via CCXT: {e}")
         return []
-
 
 def _fetch_crypto_prices_yfinance() -> List[Dict[str, Any]]:
     """Fetch crypto prices using yfinance as alternative."""
@@ -191,7 +186,6 @@ def _fetch_crypto_prices_yfinance() -> List[Dict[str, Any]]:
         logger.error(f"Failed to fetch crypto via yfinance: {e}")
         return []
 
-
 def _fetch_crypto_prices() -> List[Dict[str, Any]]:
     """Fetch top crypto prices - try multiple sources."""
     # Try CCXT first (uses system's existing exchange connection)
@@ -249,26 +243,25 @@ def _fetch_crypto_prices() -> List[Dict[str, Any]]:
         {"symbol": "XRP", "name": "XRP", "price": 0, "change_24h": 0, "change_7d": 0, "market_cap": 0, "volume_24h": 0, "image": "", "category": "crypto"},
     ]
 
-
 def _fetch_stock_indices() -> List[Dict[str, Any]]:
     """Fetch major stock indices using yfinance."""
     indices = [
-        # US Markets (coordinates offset to avoid overlap)
-        {"symbol": "^GSPC", "name_cn": "S&P 500", "name_en": "S&P 500", "region": "US", "flag": "🇺🇸", "lat": 40.7, "lng": -74.0},
-        {"symbol": "^DJI", "name_cn": "Dow Jones", "name_en": "Dow Jones", "region": "US", "flag": "🇺🇸", "lat": 38.5, "lng": -77.0},
-        {"symbol": "^IXIC", "name_cn": "NASDAQ", "name_en": "NASDAQ", "region": "US", "flag": "🇺🇸", "lat": 37.5, "lng": -122.4},
+        # US Markets - offset coordinates to avoid overlap
+        {"symbol": "^GSPC", "name_en": "S&P 500", "region": "US", "flag": "🇺🇸", "lat": 40.7, "lng": -74.0},
+        {"symbol": "^DJI", "name_en": "Dow Jones", "region": "US", "flag": "🇺🇸", "lat": 38.5, "lng": -77.0},
+        {"symbol": "^IXIC", "name_en": "NASDAQ", "region": "US", "flag": "🇺🇸", "lat": 37.5, "lng": -122.4},
         # Europe
-        {"symbol": "^GDAXI", "name_cn": "DAX", "name_en": "DAX", "region": "EU", "flag": "🇩🇪", "lat": 50.1109, "lng": 8.6821},
-        {"symbol": "^FTSE", "name_cn": "FTSE 100", "name_en": "FTSE 100", "region": "EU", "flag": "🇬🇧", "lat": 51.5074, "lng": -0.1278},
-        {"symbol": "^FCHI", "name_cn": "CAC 40", "name_en": "CAC 40", "region": "EU", "flag": "🇫🇷", "lat": 48.8566, "lng": 2.3522},
+        {"symbol": "^GDAXI", "name_en": "DAX", "region": "EU", "flag": "🇩🇪", "lat": 50.1109, "lng": 8.6821},
+        {"symbol": "^FTSE", "name_en": "FTSE 100", "region": "EU", "flag": "🇬🇧", "lat": 51.5074, "lng": -0.1278},
+        {"symbol": "^FCHI", "name_en": "CAC 40", "region": "EU", "flag": "🇫🇷", "lat": 48.8566, "lng": 2.3522},
         # Japan
-        {"symbol": "^N225", "name_cn": "Nikkei 225", "name_en": "Nikkei 225", "region": "JP", "flag": "🇯🇵", "lat": 35.6762, "lng": 139.6503},
+        {"symbol": "^N225", "name_en": "Nikkei 225", "region": "JP", "flag": "🇯🇵", "lat": 35.6762, "lng": 139.6503},
         # Korea
-        {"symbol": "^KS11", "name_cn": "KOSPI", "name_en": "KOSPI", "region": "KR", "flag": "🇰🇷", "lat": 37.5665, "lng": 126.9780},
+        {"symbol": "^KS11", "name_en": "KOSPI", "region": "KR", "flag": "🇰🇷", "lat": 37.5665, "lng": 126.9780},
         # Australia
-        {"symbol": "^AXJO", "name_cn": "ASX 200", "name_en": "ASX 200", "region": "AU", "flag": "🇦🇺", "lat": -33.8688, "lng": 151.2093},
+        {"symbol": "^AXJO", "name_en": "ASX 200", "region": "AU", "flag": "🇦🇺", "lat": -33.8688, "lng": 151.2093},
         # India
-        {"symbol": "^BSESN", "name_cn": "SENSEX", "name_en": "SENSEX", "region": "IN", "flag": "🇮🇳", "lat": 19.0760, "lng": 72.8777},
+        {"symbol": "^BSESN", "name_en": "SENSEX", "region": "IN", "flag": "🇮🇳", "lat": 19.0760, "lng": 72.8777},
     ]
     
     try:
@@ -297,7 +290,7 @@ def _fetch_stock_indices() -> List[Dict[str, Any]]:
                     
                     result.append({
                         "symbol": idx["symbol"],
-                        "name_cn": idx["name_cn"],
+                        "name": idx["name_en"],
                         "name_en": idx["name_en"],
                         "price": round(current, 2),
                         "change": round(change, 2),
@@ -311,7 +304,7 @@ def _fetch_stock_indices() -> List[Dict[str, Any]]:
                 logger.debug(f"Failed to fetch {idx['symbol']}: {e}")
                 result.append({
                     "symbol": idx["symbol"],
-                    "name_cn": idx["name_cn"],
+                    "name": idx["name_en"],
                     "name_en": idx["name_en"],
                     "price": 0,
                     "change": 0,
@@ -327,18 +320,17 @@ def _fetch_stock_indices() -> List[Dict[str, Any]]:
         logger.error(f"Failed to fetch stock indices: {e}")
         return []
 
-
 def _fetch_forex_pairs() -> List[Dict[str, Any]]:
     """Fetch major forex pairs."""
     pairs = [
-        {"symbol": "EURUSD=X", "name": "EUR/USD", "name_cn": "EUR/USD", "name_en": "EUR/USD", "base": "EUR", "quote": "USD"},
-        {"symbol": "GBPUSD=X", "name": "GBP/USD", "name_cn": "GBP/USD", "name_en": "GBP/USD", "base": "GBP", "quote": "USD"},
-        {"symbol": "USDJPY=X", "name": "USD/JPY", "name_cn": "USD/JPY", "name_en": "USD/JPY", "base": "USD", "quote": "JPY"},
-        {"symbol": "USDCNH=X", "name": "USD/CNH", "name_cn": "USD/CNH", "name_en": "USD/CNH", "base": "USD", "quote": "CNH"},
-        {"symbol": "AUDUSD=X", "name": "AUD/USD", "name_cn": "AUD/USD", "name_en": "AUD/USD", "base": "AUD", "quote": "USD"},
-        {"symbol": "USDCAD=X", "name": "USD/CAD", "name_cn": "USD/CAD", "name_en": "USD/CAD", "base": "USD", "quote": "CAD"},
-        {"symbol": "USDCHF=X", "name": "USD/CHF", "name_cn": "USD/CHF", "name_en": "USD/CHF", "base": "USD", "quote": "CHF"},
-        {"symbol": "NZDUSD=X", "name": "NZD/USD", "name_cn": "NZD/USD", "name_en": "NZD/USD", "base": "NZD", "quote": "USD"},
+        {"symbol": "EURUSD=X", "name": "EUR/USD", "name_en": "EUR/USD", "base": "EUR", "quote": "USD"},
+        {"symbol": "GBPUSD=X", "name": "GBP/USD", "name_en": "GBP/USD", "base": "GBP", "quote": "USD"},
+        {"symbol": "USDJPY=X", "name": "USD/JPY", "name_en": "USD/JPY", "base": "USD", "quote": "JPY"},
+        {"symbol": "USDCNH=X", "name": "USD/CNH", "name_en": "USD/CNH", "base": "USD", "quote": "CNH"},
+        {"symbol": "AUDUSD=X", "name": "AUD/USD", "name_en": "AUD/USD", "base": "AUD", "quote": "USD"},
+        {"symbol": "USDCAD=X", "name": "USD/CAD", "name_en": "USD/CAD", "base": "USD", "quote": "CAD"},
+        {"symbol": "USDCHF=X", "name": "USD/CHF", "name_en": "USD/CHF", "base": "USD", "quote": "CHF"},
+        {"symbol": "NZDUSD=X", "name": "NZD/USD", "name_en": "NZD/USD", "base": "NZD", "quote": "USD"},
     ]
     
     try:
@@ -368,7 +360,6 @@ def _fetch_forex_pairs() -> List[Dict[str, Any]]:
                     result.append({
                         "symbol": pair["name"],
                         "name": pair["name"],
-                        "name_cn": pair["name_cn"],
                         "name_en": pair["name_en"],
                         "price": round(current, 5),
                         "change": round(change, 2),
@@ -384,16 +375,15 @@ def _fetch_forex_pairs() -> List[Dict[str, Any]]:
         logger.error(f"Failed to fetch forex pairs: {e}")
         return []
 
-
 def _fetch_commodities() -> List[Dict[str, Any]]:
     """Fetch commodity prices."""
     commodities = [
-        {"symbol": "GC=F", "name_cn": "Gold", "name_en": "Gold", "unit": "USD/oz"},
-        {"symbol": "SI=F", "name_cn": "Silver", "name_en": "Silver", "unit": "USD/oz"},
-        {"symbol": "CL=F", "name_cn": "Crude Oil WTI", "name_en": "Crude Oil WTI", "unit": "USD/bbl"},
-        {"symbol": "BZ=F", "name_cn": "Brent Oil", "name_en": "Brent Oil", "unit": "USD/bbl"},
-        {"symbol": "HG=F", "name_cn": "Copper", "name_en": "Copper", "unit": "USD/lb"},
-        {"symbol": "NG=F", "name_cn": "Natural Gas", "name_en": "Natural Gas", "unit": "USD/MMBtu"},
+        {"symbol": "GC=F", "name_en": "Gold", "unit": "USD/oz"},
+        {"symbol": "SI=F", "name_en": "Silver", "unit": "USD/oz"},
+        {"symbol": "CL=F", "name_en": "Crude Oil WTI", "unit": "USD/bbl"},
+        {"symbol": "BZ=F", "name_en": "Brent Oil", "unit": "USD/bbl"},
+        {"symbol": "HG=F", "name_en": "Copper", "unit": "USD/lb"},
+        {"symbol": "NG=F", "name_en": "Natural Gas", "unit": "USD/MMBtu"},
     ]
     
     result = []
@@ -416,7 +406,7 @@ def _fetch_commodities() -> List[Dict[str, Any]]:
                         change = ((current - prev_close) / prev_close) * 100
                         result.append({
                             "symbol": commodity["symbol"],
-                            "name_cn": commodity["name_cn"],
+                            "name": commodity["name_en"],
                             "name_en": commodity["name_en"],
                             "price": round(current, 2),
                             "change": round(change, 2),
@@ -426,7 +416,7 @@ def _fetch_commodities() -> List[Dict[str, Any]]:
                     elif len(hist) == 1:
                         result.append({
                             "symbol": commodity["symbol"],
-                            "name_cn": commodity["name_cn"],
+                            "name": commodity["name_en"],
                             "name_en": commodity["name_en"],
                             "price": round(hist["Close"].iloc[-1], 2),
                             "change": 0,
@@ -449,7 +439,7 @@ def _fetch_commodities() -> List[Dict[str, Any]]:
         for commodity in commodities:
             result.append({
                 "symbol": commodity["symbol"],
-                "name_cn": commodity["name_cn"],
+                "name": commodity["name_en"],
                 "name_en": commodity["name_en"],
                 "price": 0,
                 "change": 0,
@@ -458,7 +448,6 @@ def _fetch_commodities() -> List[Dict[str, Any]]:
             })
     
     return result
-
 
 def _fetch_fear_greed_index() -> Dict[str, Any]:
     """Fetch Fear & Greed Index from alternative.me (crypto)."""
@@ -492,14 +481,12 @@ def _fetch_fear_greed_index() -> Dict[str, Any]:
     logger.warning("Returning default Fear & Greed value (50)")
     return {"value": 50, "classification": "Neutral", "timestamp": 0, "source": "N/A"}
 
-
 def _fetch_vix() -> Dict[str, Any]:
     """Fetch VIX (CBOE Volatility Index) with multiple fallbacks."""
-    # Default - neutral market level
-    DEFAULT_VIX = {"value": 18, "change": 0, "level": "low",
-                   "interpretation": "Low - Market Stable",
-                   "interpretation_en": "Low - Market Stable"}
-
+    # Default value - reasonable market neutral level
+    DEFAULT_VIX = {"value": 18, "change": 0, "level": "low", 
+                   "interpretation": "Low volatility - stable market"}
+    
     # 1) Try yfinance
     try:
         import yfinance as yf
@@ -526,7 +513,7 @@ def _fetch_vix() -> Dict[str, Any]:
     except Exception as e:
         logger.warning(f"yfinance VIX failed, trying akshare: {e}")
         
-        # 2) Try Akshare (fallback for some regions)
+        # 2) Try Akshare (China server friendly)
         try:
             import akshare as ak
             vix_df = ak.index_vix()  # VIX index
@@ -547,39 +534,36 @@ def _fetch_vix() -> Dict[str, Any]:
     # VIX levels interpretation
     if current < 12:
         level = "very_low"
-        interpretation_en = "Very Low - Extreme Optimism"
+        interpretation = "Extremely low vol - market euphoria"
     elif current < 20:
         level = "low"
-        interpretation_en = "Low - Market Stable"
+        interpretation = "Low volatility - stable market"
     elif current < 25:
         level = "moderate"
-        interpretation_en = "Moderate - Normal Level"
+        interpretation = "Medium volatility - normal level"
     elif current < 30:
         level = "high"
-        interpretation_en = "High - Market Concern"
+        interpretation = "High volatility - market concern"
     else:
         level = "very_high"
-        interpretation_en = "Very High - Market Panic"
-
+        interpretation = "Extreme volatility - market panic"
+    
     return {
         "value": round(current, 2),
         "change": round(change, 2),
         "level": level,
-        "interpretation": interpretation_en,
-        "interpretation_en": interpretation_en
+        "interpretation": interpretation
     }
-
 
 def _fetch_dollar_index() -> Dict[str, Any]:
     """Fetch US Dollar Index (DXY) with multiple fallbacks."""
-    # Default - neutral level
+    # Default value - reasonable neutral level
     DEFAULT_DXY = {"value": 104, "change": 0, "level": "moderate_strong",
-                   "interpretation": "Moderately Strong - Watch capital flows",
-                   "interpretation_en": "Moderately Strong - Watch capital flows"}
-
+                   "interpretation": "USD slightly strong - watch capital flows"}
+    
     current = 0
     change = 0
-
+    
     # 1) Try yfinance
     try:
         import yfinance as yf
@@ -606,13 +590,15 @@ def _fetch_dollar_index() -> Dict[str, Any]:
     except Exception as e:
         logger.warning(f"yfinance DXY failed, trying akshare: {e}")
         
-        # 2) Try Akshare for DXY (symbol and column names are from akshare API)
+        # 2) Try Akshare for USD index
         try:
             import akshare as ak
-            fx_df = ak.currency_boc_sina(symbol="美元")  # USD/CNY - akshare API symbol
+            # Akshare forex data
+            fx_df = ak.currency_boc_sina(symbol="美元")
             if fx_df is not None and len(fx_df) > 0:
-                usd_cny = float(fx_df.iloc[-1]["中行汇买价"]) / 100  # BOC buy rate column
-                current = usd_cny * 14.5  # rough DXY proxy
+                # Estimate DXY using BOC exchange rate (approximate)
+                usd_cny = float(fx_df.iloc[-1]['中行汇买价']) / 100
+                current = usd_cny * 14.5  # Approximate conversion
                 change = 0
                 logger.info(f"DXY estimated from akshare: {current:.2f}")
             else:
@@ -627,29 +613,27 @@ def _fetch_dollar_index() -> Dict[str, Any]:
     # DXY interpretation
     if current > 105:
         level = "strong"
-        interpretation_en = "Strong USD - Bearish commodities/EM"
+        interpretation = "USD strong - bearish for commodities/EM"
     elif current > 100:
         level = "moderate_strong"
-        interpretation_en = "Moderately Strong - Watch capital flows"
+        interpretation = "USD slightly strong - watch capital flows"
     elif current > 95:
         level = "neutral"
-        interpretation_en = "Neutral - Market balanced"
+        interpretation = "USD neutral - market balanced"
     elif current > 90:
         level = "moderate_weak"
-        interpretation_en = "Moderately Weak - Bullish risk assets"
+        interpretation = "USD slightly weak - bullish for risk assets"
     else:
         level = "weak"
-        interpretation_en = "Weak USD - Bullish gold/commodities"
-
+        interpretation = "USD weak - bullish for gold/commodities"
+    
     logger.info(f"DXY fetched: {current:.2f} ({level})")
     return {
         "value": round(current, 2),
         "change": round(change, 2),
         "level": level,
-        "interpretation": interpretation_en,
-        "interpretation_en": interpretation_en
+        "interpretation": interpretation
     }
-
 
 def _fetch_yield_curve() -> Dict[str, Any]:
     """Fetch Treasury Yield Curve (10Y - 2Y spread)."""
@@ -660,19 +644,20 @@ def _fetch_yield_curve() -> Dict[str, Any]:
         
         # 10-year Treasury yield
         tnx = yf.Ticker("^TNX")
-
+        
+        # Wrap history call with try-except
         try:
             tnx_hist = tnx.history(period="5d")
         except Exception as hist_err:
             logger.warning(f"TNX history fetch failed: {hist_err}")
             tnx_hist = None
-
+        
+        # Safety check
         if tnx_hist is None or tnx_hist.empty:
             logger.warning("TNX history is None or empty, returning default")
             return {
                 "yield_10y": 4.2, "yield_2y": 4.0, "spread": 0.2, "change": 0,
-                "level": "normal", "interpretation": "Data temporarily unavailable",
-                "interpretation_en": "Data temporarily unavailable", "signal": "neutral"
+                "level": "normal", "interpretation": "Data not available", "signal": "neutral"
             }
         
         if len(tnx_hist) >= 1:
@@ -712,25 +697,25 @@ def _fetch_yield_curve() -> Dict[str, Any]:
         # Yield curve interpretation
         if spread < -0.5:
             level = "deeply_inverted"
-            interpretation_en = "Deeply Inverted - Strong recession signal"
+            interpretation = "Deep inversion - strong recession signal"
             signal = "bearish"
         elif spread < 0:
             level = "inverted"
-            interpretation_en = "Inverted - Recession warning"
+            interpretation = "Yield inversion - recession warning"
             signal = "bearish"
         elif spread < 0.5:
             level = "flat"
-            interpretation_en = "Flat - Economic slowdown signal"
+            interpretation = "Flat curve - economic slowdown signal"
             signal = "neutral"
         elif spread < 1.5:
             level = "normal"
-            interpretation_en = "Normal - Healthy economy"
+            interpretation = "Normal curve - healthy economy"
             signal = "bullish"
         else:
             level = "steep"
-            interpretation_en = "Steep - Economic expansion expected"
+            interpretation = "Steep curve - economic expansion expected"
             signal = "bullish"
-
+        
         logger.info(f"Yield Curve: 10Y={yield_10y:.2f}%, spread={spread:.2f}% ({level})")
         return {
             "yield_10y": round(yield_10y, 2),
@@ -739,17 +724,15 @@ def _fetch_yield_curve() -> Dict[str, Any]:
             "change": round(change, 3),
             "level": level,
             "signal": signal,
-            "interpretation": interpretation_en,
-            "interpretation_en": interpretation_en
+            "interpretation": interpretation
         }
     except Exception as e:
         logger.error(f"Failed to fetch Yield Curve: {e}", exc_info=True)
         return {
             "yield_10y": 0, "yield_2y": 0, "spread": 0, "change": 0,
             "level": "unknown", "signal": "neutral",
-            "interpretation": "Data fetch failed", "interpretation_en": "Data fetch failed"
+            "interpretation": "Data fetch failed"
         }
-
 
 def _fetch_vxn() -> Dict[str, Any]:
     """Fetch NASDAQ Volatility Index (VXN) - Tech sector fear gauge."""
@@ -774,32 +757,30 @@ def _fetch_vxn() -> Dict[str, Any]:
         # VXN levels (typically higher than VIX)
         if current < 15:
             level = "very_low"
-            interpretation_en = "Very Low Tech Volatility - Optimistic"
+            interpretation = "Tech extremely low vol - market optimistic"
         elif current < 22:
             level = "low"
-            interpretation_en = "Low Tech Volatility - Stable"
+            interpretation = "Tech low vol - stable"
         elif current < 28:
             level = "moderate"
-            interpretation_en = "Moderate Tech Volatility - Normal"
+            interpretation = "Tech medium vol - normal"
         elif current < 35:
             level = "high"
-            interpretation_en = "High Tech Volatility - Caution"
+            interpretation = "Tech high vol - caution"
         else:
             level = "very_high"
-            interpretation_en = "Very High Tech Volatility - Panic"
-
+            interpretation = "Tech extreme vol - panic"
+        
         logger.info(f"VXN fetched: {current:.2f} ({level})")
         return {
             "value": round(current, 2),
             "change": round(change, 2),
             "level": level,
-            "interpretation": interpretation_en,
-            "interpretation_en": interpretation_en
+            "interpretation": interpretation
         }
     except Exception as e:
         logger.error(f"Failed to fetch VXN: {e}", exc_info=True)
-        return {"value": 0, "change": 0, "level": "unknown", "interpretation": "Data fetch failed", "interpretation_en": "Data fetch failed"}
-
+        return {"value": 0, "change": 0, "level": "unknown", "interpretation": "Data fetch failed"}
 
 def _fetch_gvz() -> Dict[str, Any]:
     """Fetch Gold Volatility Index (GVZ) - Safe haven sentiment."""
@@ -824,32 +805,30 @@ def _fetch_gvz() -> Dict[str, Any]:
         # GVZ levels
         if current < 12:
             level = "very_low"
-            interpretation_en = "Low Gold Vol - Low safe haven demand"
+            interpretation = "Gold low vol - low safe-haven demand"
         elif current < 16:
             level = "low"
-            interpretation_en = "Gold Stable - Market calm"
+            interpretation = "Gold stable - calm market"
         elif current < 20:
             level = "moderate"
-            interpretation_en = "Moderate Gold Vol - Watch safe haven"
+            interpretation = "Gold medium vol - watch safe-haven sentiment"
         elif current < 25:
             level = "high"
-            interpretation_en = "High Gold Vol - Rising safe haven demand"
+            interpretation = "Gold high vol - rising safe-haven demand"
         else:
             level = "very_high"
-            interpretation_en = "Very High Gold Vol - Flight to safety"
-
+            interpretation = "Gold extreme vol - market risk-off"
+        
         logger.info(f"GVZ fetched: {current:.2f} ({level})")
         return {
             "value": round(current, 2),
             "change": round(change, 2),
             "level": level,
-            "interpretation": interpretation_en,
-            "interpretation_en": interpretation_en
+            "interpretation": interpretation
         }
     except Exception as e:
         logger.error(f"Failed to fetch GVZ: {e}", exc_info=True)
-        return {"value": 0, "change": 0, "level": "unknown", "interpretation": "Data fetch failed", "interpretation_en": "Data fetch failed"}
-
+        return {"value": 0, "change": 0, "level": "unknown", "interpretation": "Data fetch failed"}
 
 def _fetch_put_call_ratio() -> Dict[str, Any]:
     """
@@ -888,25 +867,25 @@ def _fetch_put_call_ratio() -> Dict[str, Any]:
         # Interpretation
         if ratio > 1.15:
             level = "high_fear"
-            interpretation_en = "VIX Backwardation - High short-term fear"
+            interpretation = "VIX inverted - short-term panic elevated"
             signal = "bearish"
         elif ratio > 1.0:
             level = "elevated"
-            interpretation_en = "Slight Backwardation - Market cautious"
+            interpretation = "Slightly inverted - market cautious"
             signal = "neutral"
         elif ratio > 0.9:
             level = "normal"
-            interpretation_en = "Normal Structure - Market stable"
+            interpretation = "Normal structure - stable market"
             signal = "neutral"
         elif ratio > 0.8:
             level = "complacent"
-            interpretation_en = "Deep Contango - Market complacent"
+            interpretation = "Deep contango - market complacent"
             signal = "bullish"
         else:
             level = "extreme_complacency"
-            interpretation_en = "Extreme Complacency - Watch for reversal"
+            interpretation = "Extreme complacency - watch for reversal"
             signal = "neutral"
-
+        
         logger.info(f"VIX Term Structure: ratio={ratio:.3f} ({level})")
         return {
             "value": round(ratio, 3),
@@ -915,17 +894,15 @@ def _fetch_put_call_ratio() -> Dict[str, Any]:
             "change": round(change, 2),
             "level": level,
             "signal": signal,
-            "interpretation": interpretation_en,
-            "interpretation_en": interpretation_en
+            "interpretation": interpretation
         }
     except Exception as e:
         logger.error(f"Failed to calculate Put/Call proxy: {e}", exc_info=True)
         return {
             "value": 1.0, "vix": 0, "vix3m": 0, "change": 0,
             "level": "unknown", "signal": "neutral",
-            "interpretation": "Data fetch failed", "interpretation_en": "Data fetch failed"
+            "interpretation": "Data fetch failed"
         }
-
 
 def _fetch_financial_news(lang: str = "all") -> Dict[str, List[Dict[str, Any]]]:
     """Fetch financial news using search service - separated by language."""
@@ -935,14 +912,14 @@ def _fetch_financial_news(lang: str = "all") -> Dict[str, List[Dict[str, Any]]]:
         from app.services.search import SearchService
         search = SearchService()
         
-        # News topic queries (localized by search backend)
+        # Chinese news queries
         cn_queries = [
-            "cryptocurrency news",
-            "Fed interest rate",
-            "US stock market news",
+            "crypto news",
+            "Federal Reserve interest rate",
+            "US stock market latest news",
             "forex market analysis",
             "global economic data",
-            "commodities futures",
+            "futures market trends",
         ]
         
         # English news queries
@@ -955,7 +932,7 @@ def _fetch_financial_news(lang: str = "all") -> Dict[str, List[Dict[str, Any]]]:
             "S&P 500 market update",
         ]
         
-        # Fetch news for locale cn
+        # Fetch Chinese news
         if lang in ("all", "cn"):
             for query in cn_queries:
                 try:
@@ -1007,7 +984,6 @@ def _fetch_financial_news(lang: str = "all") -> Dict[str, List[Dict[str, Any]]]:
     
     return result
 
-
 def _get_economic_calendar() -> List[Dict[str, Any]]:
     """
     Get economic calendar events with impact indicators.
@@ -1015,7 +991,8 @@ def _get_economic_calendar() -> List[Dict[str, Any]]:
     """
     today = datetime.now()
     events = []
-
+    
+    # Comprehensive economic events with impact analysis
     sample_events = [
         {
             "name": "US Non-Farm Payrolls",
@@ -1024,37 +1001,37 @@ def _get_economic_calendar() -> List[Dict[str, Any]]:
             "importance": "high",
             "forecast": "180K",
             "previous": "175K",
-            "impact_if_above": "bullish",
+            "impact_if_above": "bullish",  # Above expectations bullish for USD
             "impact_if_below": "bearish",
-            "impact_desc": "Above forecast: bullish USD/stocks; Below: bearish",
+            "impact_desc": "Above expectations bullish for USD/stocks, below bearish",
             "impact_desc_en": "Above forecast: bullish USD/stocks; Below: bearish"
         },
         {
-            "name": "Fed Interest Rate Decision",
+            "name": "Fed Rate Decision",
             "name_en": "Fed Interest Rate Decision",
             "country": "US",
             "importance": "high",
             "forecast": "5.25%",
             "previous": "5.25%",
-            "impact_if_above": "bearish",
+            "impact_if_above": "bearish",  # Rate hike bearish for stocks
             "impact_if_below": "bullish",
-            "impact_desc": "Rate hike: bearish stocks/crypto; Cut: bullish",
+            "impact_desc": "Rate hike bearish for stocks/crypto, cut bullish",
             "impact_desc_en": "Rate hike: bearish stocks/crypto; Cut: bullish"
         },
         {
-            "name": "US CPI m/m",
+            "name": "US CPI MoM",
             "name_en": "US CPI m/m",
             "country": "US",
             "importance": "high",
             "forecast": "0.3%",
             "previous": "0.4%",
-            "impact_if_above": "bearish",
+            "impact_if_above": "bearish",  # High CPI bearish
             "impact_if_below": "bullish",
-            "impact_desc": "Higher CPI increases rate hike expectations, bearish stocks",
+            "impact_desc": "CPI above expectations increases rate hike odds, bearish for stocks",
             "impact_desc_en": "Higher CPI increases rate hike expectations, bearish stocks"
         },
         {
-            "name": "ECB Interest Rate Decision",
+            "name": "ECB Rate Decision",
             "name_en": "ECB Interest Rate Decision",
             "country": "EU",
             "importance": "high",
@@ -1062,19 +1039,19 @@ def _get_economic_calendar() -> List[Dict[str, Any]]:
             "previous": "4.50%",
             "impact_if_above": "bearish",
             "impact_if_below": "bullish",
-            "impact_desc": "Rate hike: bearish EU stocks, bullish EUR",
+            "impact_desc": "Rate hike bearish for EU stocks, bullish for EUR",
             "impact_desc_en": "Rate hike: bearish EU stocks, bullish EUR"
         },
         {
-            "name": "BoJ Interest Rate Decision",
+            "name": "BOJ Rate Decision",
             "name_en": "BoJ Interest Rate Decision",
             "country": "JP",
             "importance": "high",
             "forecast": "0.10%",
             "previous": "0.10%",
-            "impact_if_above": "bullish",
+            "impact_if_above": "bullish",  # Japan rate hike bullish for JPY
             "impact_if_below": "bearish",
-            "impact_desc": "Rate hike: bullish JPY, bearish Nikkei",
+            "impact_desc": "Rate hike expectations bullish for JPY, bearish for JP stocks",
             "impact_desc_en": "Rate hike expectation: bullish JPY, bearish Nikkei"
         },
         {
@@ -1086,11 +1063,11 @@ def _get_economic_calendar() -> List[Dict[str, Any]]:
             "previous": "212K",
             "impact_if_above": "bearish",
             "impact_if_below": "bullish",
-            "impact_desc": "Rising claims: bearish USD, bullish gold",
+            "impact_desc": "Rising claims bearish for USD, bullish for gold",
             "impact_desc_en": "Rising claims: bearish USD, bullish gold"
         },
         {
-            "name": "BoE Interest Rate Decision",
+            "name": "BOE Rate Decision",
             "name_en": "BoE Interest Rate Decision",
             "country": "UK",
             "importance": "high",
@@ -1098,11 +1075,11 @@ def _get_economic_calendar() -> List[Dict[str, Any]]:
             "previous": "5.25%",
             "impact_if_above": "bullish",
             "impact_if_below": "bearish",
-            "impact_desc": "Rate hike: bullish GBP, bearish UK stocks",
+            "impact_desc": "Rate hike bullish for GBP, bearish for UK stocks",
             "impact_desc_en": "Rate hike: bullish GBP, bearish UK stocks"
         },
         {
-            "name": "US Retail Sales m/m",
+            "name": "US Retail Sales MoM",
             "name_en": "US Retail Sales m/m",
             "country": "US",
             "importance": "medium",
@@ -1110,7 +1087,7 @@ def _get_economic_calendar() -> List[Dict[str, Any]]:
             "previous": "0.6%",
             "impact_if_above": "bullish",
             "impact_if_below": "bearish",
-            "impact_desc": "Strong retail: bullish USD and stocks",
+            "impact_desc": "Strong retail data bullish for USD and stocks",
             "impact_desc_en": "Strong retail: bullish USD and stocks"
         },
         {
@@ -1122,7 +1099,7 @@ def _get_economic_calendar() -> List[Dict[str, Any]]:
             "previous": "-",
             "impact_if_above": "bullish",
             "impact_if_below": "bearish",
-            "impact_desc": "Production cut: bullish oil; Increase: bearish",
+            "impact_desc": "Production cut expectations bullish for oil, increase bearish",
             "impact_desc_en": "Production cut: bullish oil; Increase: bearish"
         },
     ]
@@ -1202,7 +1179,6 @@ def _get_economic_calendar() -> List[Dict[str, Any]]:
     
     return events
 
-
 def _generate_heatmap_data() -> Dict[str, Any]:
     """Generate heatmap data for crypto, stock sectors, and forex."""
     
@@ -1267,8 +1243,8 @@ def _generate_heatmap_data() -> Dict[str, Any]:
     
     for comm in (commodities_data or []):
         heatmap["commodities"].append({
-            "name": comm.get("name_cn", comm.get("name_en", "")),
-            "name_cn": comm.get("name_cn", ""),
+            "name": comm.get("name_en", ""),
+            
             "name_en": comm.get("name_en", ""),
             "value": comm.get("change", 0),
             "price": comm.get("price", 0),
@@ -1296,7 +1272,7 @@ def _generate_heatmap_data() -> Dict[str, Any]:
     for pair in forex_data:
         heatmap["forex"].append({
             "name": pair.get("name", ""),
-            "name_cn": pair.get("name_cn", pair.get("name", "")),
+            
             "name_en": pair.get("name_en", pair.get("name", "")),
             "value": pair.get("change", 0),
             "price": pair.get("price", 0)
@@ -1346,8 +1322,8 @@ def _generate_heatmap_data() -> Dict[str, Any]:
         for idx in indices_data:
             heatmap["indices"].append({
                 "symbol": idx.get("symbol", ""),
-                "name": idx.get("name_cn", idx.get("name", "")),
-                "name_cn": idx.get("name_cn", ""),
+                "name": idx.get("name_en", idx.get("name", "")),
+                
                 "name_en": idx.get("name_en", ""),
                 "region": idx.get("region", ""),
                 "value": idx.get("change", 0),
@@ -1356,7 +1332,6 @@ def _generate_heatmap_data() -> Dict[str, Any]:
             })
     
     return heatmap
-
 
 # ============ API Endpoints ============
 
@@ -1426,7 +1401,6 @@ def market_overview():
         logger.error(f"market_overview failed: {e}", exc_info=True)
         return jsonify({"code": 0, "msg": str(e), "data": None}), 500
 
-
 @global_market_bp.route("/heatmap", methods=["GET"])
 @login_required
 def market_heatmap():
@@ -1446,7 +1420,6 @@ def market_heatmap():
     except Exception as e:
         logger.error(f"market_heatmap failed: {e}", exc_info=True)
         return jsonify({"code": 0, "msg": str(e), "data": None}), 500
-
 
 @global_market_bp.route("/news", methods=["GET"])
 @login_required
@@ -1473,7 +1446,6 @@ def market_news():
         logger.error(f"market_news failed: {e}", exc_info=True)
         return jsonify({"code": 0, "msg": str(e), "data": None}), 500
 
-
 @global_market_bp.route("/calendar", methods=["GET"])
 @login_required
 def economic_calendar():
@@ -1494,7 +1466,6 @@ def economic_calendar():
         logger.error(f"economic_calendar failed: {e}", exc_info=True)
         return jsonify({"code": 0, "msg": str(e), "data": None}), 500
 
-
 @global_market_bp.route("/sentiment", methods=["GET"])
 @login_required
 def market_sentiment():
@@ -1503,7 +1474,7 @@ def market_sentiment():
     Includes: Fear & Greed, VIX, DXY, Yield Curve, VXN, GVZ, VIX Term Structure.
     """
     try:
-        # Cache 6h (21600s); macro data changes slowly
+        # Cache 6hrs (21600s), macro data changes slowly, reduce API calls
         MACRO_CACHE_TTL = 21600  # 6 hours
         cached = _get_cached("market_sentiment", MACRO_CACHE_TTL)
         if cached:
@@ -1521,7 +1492,7 @@ def market_sentiment():
                 executor.submit(_fetch_yield_curve): "yield_curve",
                 executor.submit(_fetch_vxn): "vxn",
                 executor.submit(_fetch_gvz): "gvz",
-                executor.submit(_fetch_put_call_ratio): "vix_term",
+                executor.submit(_fetch_put_call_ratio): "vix_term"
             }
             
             results = {}
@@ -1555,7 +1526,6 @@ def market_sentiment():
     except Exception as e:
         logger.error(f"market_sentiment failed: {e}", exc_info=True)
         return jsonify({"code": 0, "msg": str(e), "data": None}), 500
-
 
 def _fetch_stock_opportunity_prices() -> List[Dict[str, Any]]:
     """Fetch popular US stock prices for opportunity scanning."""
@@ -1613,7 +1583,6 @@ def _fetch_stock_opportunity_prices() -> List[Dict[str, Any]]:
         logger.error(f"Failed to fetch stock opportunity prices: {e}")
         return []
 
-
 def _analyze_opportunities_crypto(opportunities: list):
     """Scan crypto market for trading opportunities."""
     crypto_data = _get_cached("crypto_prices")
@@ -1621,12 +1590,6 @@ def _analyze_opportunities_crypto(opportunities: list):
         crypto_data = _fetch_crypto_prices()
         if crypto_data:
             _set_cached("crypto_prices", crypto_data)
-    
-    if not crypto_data:
-        logger.warning("_analyze_opportunities_crypto: No crypto data available")
-        return
-
-    logger.debug(f"_analyze_opportunities_crypto: Analyzing {len(crypto_data)} crypto coins")
 
     for coin in (crypto_data or [])[:20]:
         change = _safe_float(coin.get("change_24h", 0))
@@ -1640,31 +1603,25 @@ def _analyze_opportunities_crypto(opportunities: list):
         reason = ""
         impact = "neutral"
 
-        # Lower thresholds to show more opportunities
-        reason_en = ""
         if change > 15:
             signal = "overbought"
             strength = "strong"
-            reason = f"24h up {change:.1f}%, 7d up {change_7d:.1f}%; short-term overbought risk"
-            reason_en = reason
+            reason = f"24h up {change:.1f}%, 7d up {change_7d:.1f}%, short-term overbought risk"
             impact = "bearish"
-        elif change > 5:
+        elif change > 8:
             signal = "bullish_momentum"
             strength = "medium"
-            reason = f"24h up {change:.1f}%; strong upward momentum"
-            reason_en = reason
+            reason = f"24h up {change:.1f}%, strong upward momentum"
             impact = "bullish"
         elif change < -15:
             signal = "oversold"
             strength = "strong"
-            reason = f"24h down {abs(change):.1f}%; possible oversold bounce"
-            reason_en = reason
+            reason = f"24h down {abs(change):.1f}%, potential oversold bounce"
             impact = "bullish"
-        elif change < -5:
+        elif change < -8:
             signal = "bearish_momentum"
             strength = "medium"
-            reason = f"24h down {abs(change):.1f}%; clear downtrend"
-            reason_en = reason
+            reason = f"24h down {abs(change):.1f}%, clear downtrend"
             impact = "bearish"
 
         if signal:
@@ -1677,12 +1634,10 @@ def _analyze_opportunities_crypto(opportunities: list):
                 "signal": signal,
                 "strength": strength,
                 "reason": reason,
-                "reason_en": reason_en,
                 "impact": impact,
                 "market": "Crypto",
                 "timestamp": int(time.time())
             })
-
 
 def _analyze_opportunities_stocks(opportunities: list):
     """Scan US stocks for trading opportunities."""
@@ -1691,12 +1646,6 @@ def _analyze_opportunities_stocks(opportunities: list):
         stock_data = _fetch_stock_opportunity_prices()
         if stock_data:
             _set_cached("stock_opportunity_prices", stock_data, 3600)
-    
-    if not stock_data:
-        logger.warning("_analyze_opportunities_stocks: No stock data available")
-        return
-
-    logger.debug(f"_analyze_opportunities_stocks: Analyzing {len(stock_data)} stocks")
 
     for stock in (stock_data or []):
         change = _safe_float(stock.get("change", 0))
@@ -1710,30 +1659,25 @@ def _analyze_opportunities_stocks(opportunities: list):
         impact = "neutral"
 
         # US stocks: smaller thresholds than crypto
-        reason_en = ""
         if change > 5:
             signal = "overbought"
             strength = "strong"
-            reason = f"Daily up {change:.1f}%; short-term gain, watch for pullback"
-            reason_en = reason
+            reason = f"Daily up {change:.1f}%, large short-term gain, watch for pullback"
             impact = "bearish"
-        elif change > 2:
+        elif change > 3:
             signal = "bullish_momentum"
             strength = "medium"
-            reason = f"Daily up {change:.1f}%; strong upward momentum"
-            reason_en = reason
+            reason = f"Daily up {change:.1f}%, strong upward momentum"
             impact = "bullish"
         elif change < -5:
             signal = "oversold"
             strength = "strong"
-            reason = f"Daily down {abs(change):.1f}%; possible oversold bounce"
-            reason_en = reason
+            reason = f"Daily down {abs(change):.1f}%, potential oversold bounce"
             impact = "bullish"
-        elif change < -2:
+        elif change < -3:
             signal = "bearish_momentum"
             strength = "medium"
-            reason = f"Daily down {abs(change):.1f}%; clear downtrend"
-            reason_en = reason
+            reason = f"Daily down {abs(change):.1f}%, clear downtrend"
             impact = "bearish"
 
         if signal:
@@ -1745,12 +1689,10 @@ def _analyze_opportunities_stocks(opportunities: list):
                 "signal": signal,
                 "strength": strength,
                 "reason": reason,
-                "reason_en": reason_en,
                 "impact": impact,
                 "market": "USStock",
                 "timestamp": int(time.time())
             })
-
 
 def _analyze_opportunities_forex(opportunities: list):
     """Scan forex pairs for trading opportunities."""
@@ -1759,17 +1701,11 @@ def _analyze_opportunities_forex(opportunities: list):
         forex_data = _fetch_forex_pairs()
         if forex_data:
             _set_cached("forex_pairs", forex_data, 3600)
-    
-    if not forex_data:
-        logger.warning("_analyze_opportunities_forex: No forex data available")
-        return
-
-    logger.debug(f"_analyze_opportunities_forex: Analyzing {len(forex_data)} forex pairs")
 
     for pair in (forex_data or []):
         change = _safe_float(pair.get("change", 0))
         symbol = pair.get("symbol", pair.get("name", ""))
-        name = pair.get("name_cn", pair.get("name", ""))
+        name = pair.get("name_en", pair.get("name", ""))
         price = _safe_float(pair.get("price", 0))
 
         signal = None
@@ -1778,30 +1714,25 @@ def _analyze_opportunities_forex(opportunities: list):
         impact = "neutral"
 
         # Forex: even smaller thresholds
-        reason_en = ""
         if change > 1.5:
             signal = "overbought"
             strength = "strong"
-            reason = f"Daily up {change:.2f}%; volatile move, watch for pullback"
-            reason_en = reason
+            reason = f"Daily up {change:.2f}%, high FX volatility, watch for pullback"
             impact = "bearish"
-        elif change > 0.5:
+        elif change > 0.8:
             signal = "bullish_momentum"
             strength = "medium"
-            reason = f"Daily up {change:.2f}%; moderate upward momentum"
-            reason_en = reason
+            reason = f"Daily up {change:.2f}%, strong upward momentum"
             impact = "bullish"
         elif change < -1.5:
             signal = "oversold"
             strength = "strong"
-            reason = f"Daily down {abs(change):.2f}%; volatile move, possible bounce"
-            reason_en = reason
+            reason = f"Daily down {abs(change):.2f}%, high FX volatility, potential bounce"
             impact = "bullish"
-        elif change < -0.5:
+        elif change < -0.8:
             signal = "bearish_momentum"
             strength = "medium"
-            reason = f"Daily down {abs(change):.2f}%; clear downtrend"
-            reason_en = reason
+            reason = f"Daily down {abs(change):.2f}%, clear downtrend"
             impact = "bearish"
 
         if signal:
@@ -1813,69 +1744,16 @@ def _analyze_opportunities_forex(opportunities: list):
                 "signal": signal,
                 "strength": strength,
                 "reason": reason,
-                "reason_en": reason_en,
                 "impact": impact,
                 "market": "Forex",
                 "timestamp": int(time.time())
             })
-
-
-def _analyze_opportunities_polymarket(opportunities: list):
-    """Scan prediction markets for opportunities."""
-    try:
-        from app.data_sources.polymarket import PolymarketDataSource
-        from app.services.polymarket_analyzer import PolymarketAnalyzer
-
-        polymarket_source = PolymarketDataSource()
-        analyzer = PolymarketAnalyzer()
-
-        markets = polymarket_source.get_trending_markets(limit=20)
-
-        for market in markets:
-            try:
-                analysis = analyzer.analyze_market(market['market_id'])
-
-                if analysis.get('error'):
-                    continue
-
-                if analysis.get('opportunity_score', 0) > 75:
-                    ai_prob = analysis.get('ai_predicted_probability', 0)
-                    mkt_prob = market['current_probability']
-                    div = analysis.get('divergence', 0)
-                    opportunities.append({
-                        "symbol": market['question'][:50],
-                        "name": market['question'],
-                        "price": market['current_probability'],
-                        "change_24h": 0,
-                        "signal": "prediction_opportunity",
-                        "strength": "strong" if analysis.get('opportunity_score', 0) > 85 else "medium",
-                        "reason": f"AI predicted {ai_prob:.1f}%, market {mkt_prob:.1f}%; divergence {div:.1f}%",
-                        "reason_en": f"AI predicted {ai_prob:.1f}%, market {mkt_prob:.1f}%; divergence {div:.1f}%",
-                        "impact": "bullish" if analysis.get('recommendation') == "YES" else "bearish",
-                        "market": "PredictionMarket",
-                        "market_id": market['market_id'],
-                        "ai_analysis": {
-                            "predicted_probability": analysis.get('ai_predicted_probability', 0),
-                            "recommendation": analysis.get('recommendation', 'HOLD'),
-                            "confidence_score": analysis.get('confidence_score', 0),
-                            "opportunity_score": analysis.get('opportunity_score', 0)
-                        },
-                        "timestamp": int(time.time())
-                    })
-            except Exception as e:
-                logger.debug(f"Failed to analyze polymarket {market.get('market_id')}: {e}")
-                continue
-                
-    except Exception as e:
-        logger.error(f"_analyze_opportunities_polymarket failed: {e}")
-
 
 @global_market_bp.route("/opportunities", methods=["GET"])
 @login_required
 def trading_opportunities():
     """
     Scan for trading opportunities across Crypto, US Stocks, and Forex.
-    Note: Prediction Markets are excluded as they have their own dedicated page.
     Cached for 1 hour. Pass ?force=true to skip cache.
     """
     try:
@@ -1889,36 +1767,16 @@ def trading_opportunities():
         opportunities = []
 
         # 1) Crypto
-        try:
-            _analyze_opportunities_crypto(opportunities)
-            crypto_count = len([o for o in opportunities if o.get("market") == "Crypto"])
-            logger.info(f"Trading opportunities: found {crypto_count} crypto opportunities")
-        except Exception as e:
-            logger.error(f"Failed to analyze crypto opportunities: {e}", exc_info=True)
+        _analyze_opportunities_crypto(opportunities)
 
         # 2) US Stocks
-        try:
-            _analyze_opportunities_stocks(opportunities)
-            stock_count = len([o for o in opportunities if o.get("market") == "USStock"])
-            logger.info(f"Trading opportunities: found {stock_count} US stock opportunities")
-        except Exception as e:
-            logger.error(f"Failed to analyze stock opportunities: {e}", exc_info=True)
+        _analyze_opportunities_stocks(opportunities)
 
         # 3) Forex
-        try:
-            _analyze_opportunities_forex(opportunities)
-            forex_count = len([o for o in opportunities if o.get("market") == "Forex"])
-            logger.info(f"Trading opportunities: found {forex_count} forex opportunities")
-        except Exception as e:
-            logger.error(f"Failed to analyze forex opportunities: {e}", exc_info=True)
-
-        # Note: Prediction Markets are excluded from trading opportunities radar
-        # as they have their own dedicated page at /polymarket
+        _analyze_opportunities_forex(opportunities)
 
         # Sort by absolute change descending
         opportunities.sort(key=lambda x: abs(x.get("change_24h", 0)), reverse=True)
-
-        logger.info(f"Trading opportunities: total {len(opportunities)} opportunities found (Crypto: {len([o for o in opportunities if o.get('market') == 'Crypto'])}, USStock: {len([o for o in opportunities if o.get('market') == 'USStock'])}, Forex: {len([o for o in opportunities if o.get('market') == 'Forex'])})")
 
         _set_cached("trading_opportunities", opportunities, 3600)
 
@@ -1927,7 +1785,6 @@ def trading_opportunities():
     except Exception as e:
         logger.error(f"trading_opportunities failed: {e}", exc_info=True)
         return jsonify({"code": 0, "msg": str(e), "data": None}), 500
-
 
 @global_market_bp.route("/refresh", methods=["POST"])
 @login_required

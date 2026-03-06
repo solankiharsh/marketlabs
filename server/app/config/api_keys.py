@@ -1,11 +1,11 @@
 """
 API key configuration.
-All third-party keys should be provided via environment variables (recommended: server/.env).
+All third-party keys should be provided via environment variables (recommended: backend_api_python/.env).
 """
 import os
 
 class MetaAPIKeys(type):
-    """Metaclass for API Keys; supports dynamic class attribute resolution."""
+    """Meta class for API Keys to support dynamic attribute access"""
     
     @property
     def FINNHUB_API_KEY(cls):
@@ -15,13 +15,9 @@ class MetaAPIKeys(type):
     
     @property
     def TIINGO_API_KEY(cls):
-        # Check env first so .env is always used even if config cache was built before load_dotenv
-        env_val = os.getenv('TIINGO_API_KEY', '').strip()
-        if env_val:
-            return env_val
         from app.utils.config_loader import load_addon_config
         val = load_addon_config().get('tiingo', {}).get('api_key')
-        return val if val else ''
+        return val if val else os.getenv('TIINGO_API_KEY', '')
     
     @property
     def OPENROUTER_API_KEY(cls):
@@ -111,17 +107,18 @@ class MetaAPIKeys(type):
 
 
 class APIKeys(metaclass=MetaAPIKeys):
-    """API key configuration."""
-
+    """API keys configuration class"""
+    
     @classmethod
     def get(cls, key_name: str, default: str = '') -> str:
-        """Get API key by name."""
+        """Get API key"""
+        # Try to get from class attributes first
         if hasattr(cls, key_name):
             return getattr(cls, key_name)
         return default
     
     @classmethod
     def is_configured(cls, key_name: str) -> bool:
-        """Check if API key is configured."""
+        """Check if API key is configured"""
         value = cls.get(key_name)
         return bool(value and value.strip())

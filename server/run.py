@@ -1,5 +1,5 @@
 """
-Zing Python API entrypoint.
+MarketLabs Python API entrypoint.
 """
 import os
 import sys
@@ -80,9 +80,9 @@ app = create_app()
 
 
 def main():
-    """Start the application"""
+    """Start application."""
     # Keep startup messages ASCII-only and short.
-    print("Zing Python API v2.2.2")
+    print("MarketLabs Python API v2.0.0")
     
     # Check demo mode status for debugging
     demo_status = os.getenv('IS_DEMO_MODE', 'false').lower()

@@ -1,8 +1,5 @@
 """
-期货数据源
-支持：
-1. 加密货币期货（Binance Futures via CCXT）
-2. 传统期货（Yahoo Finance）
+Futures data source: 1) Crypto futures (Binance via CCXT), 2) Traditional futures (Yahoo Finance).
 """
 from typing import Dict, List, Any, Optional
 from datetime import datetime, timedelta
@@ -17,11 +14,10 @@ logger = get_logger(__name__)
 
 
 class FuturesDataSource(BaseDataSource):
-    """期货数据源"""
-    
+    """Futures data source."""
+
     name = "Futures"
-    
-    # Yahoo Finance时间周期映射
+
     YF_TIMEFRAME_MAP = {
         '1m': '1m',
         '5m': '5m',
@@ -33,21 +29,18 @@ class FuturesDataSource(BaseDataSource):
         '1W': '1wk'
     }
     
-    # CCXT时间周期映射
     CCXT_TIMEFRAME_MAP = CCXTConfig.TIMEFRAME_MAP
-    
-    # 传统期货合约代码（Yahoo Finance）
+
     YF_SYMBOLS = {
-        'GC': 'GC=F',   # 黄金期货
-        'SI': 'SI=F',   # 白银期货
-        'CL': 'CL=F',   # 原油期货
-        'NG': 'NG=F',   # 天然气期货
-        'ZC': 'ZC=F',   # 玉米期货
-        'ZW': 'ZW=F',   # 小麦期货
+        'GC': 'GC=F',
+        'SI': 'SI=F',
+        'CL': 'CL=F',
+        'NG': 'NG=F',
+        'ZC': 'ZC=F',
+        'ZW': 'ZW=F',
     }
-    
+
     def __init__(self):
-        # 初始化CCXT（用于加密货币期货）
         config = {
             'timeout': CCXTConfig.TIMEOUT,
             'enableRateLimit': CCXTConfig.ENABLE_RATE_LIMIT,
@@ -103,9 +96,9 @@ class FuturesDataSource(BaseDataSource):
         return self.exchange.fetch_ticker(sym)
     
     def _get_timeframe_seconds(self, timeframe: str) -> int:
-        """获取时间周期对应的秒数"""
+        """Return seconds for the given timeframe."""
         return TIMEFRAME_SECONDS.get(timeframe, 86400)
-    
+
     def get_kline(
         self,
         symbol: str,
@@ -114,15 +107,8 @@ class FuturesDataSource(BaseDataSource):
         before_time: Optional[int] = None
     ) -> List[Dict[str, Any]]:
         """
-        获取期货K线数据
-        
-        Args:
-            symbol: 期货合约代码
-            timeframe: 时间周期
-            limit: 数据条数
-            before_time: 结束时间戳
+        Get futures kline data. Args: symbol, timeframe, limit, before_time.
         """
-        # 判断是传统期货还是加密货币期货
         if symbol in self.YF_SYMBOLS or symbol.endswith('=F'):
             return self._get_traditional_futures(symbol, timeframe, limit, before_time)
         else:
@@ -135,19 +121,19 @@ class FuturesDataSource(BaseDataSource):
         limit: int,
         before_time: Optional[int] = None
     ) -> List[Dict[str, Any]]:
-        """使用yfinance获取传统期货数据"""
+        """Fetch traditional futures via yfinance."""
         try:
-            # 转换symbol格式
+            # symbol format
             yf_symbol = self.YF_SYMBOLS.get(symbol, symbol)
             if not yf_symbol.endswith('=F'):
                 yf_symbol = symbol + '=F'
             
-            # 转换时间周期
+            # timeframe
             yf_interval = self.YF_TIMEFRAME_MAP.get(timeframe, '1d')
             
-            # logger.info(f"获取传统期货K线: {yf_symbol}, 周期: {yf_interval}, 条数: {limit}")
+            # logger.info(f"Traditional futures: {yf_symbol}, interval={yf_interval}, limit={limit}")
             
-            # 计算时间范围
+            # time range
             if before_time:
                 end_time = datetime.fromtimestamp(before_time)
             else:
@@ -156,10 +142,10 @@ class FuturesDataSource(BaseDataSource):
             tf_seconds = self._get_timeframe_seconds(timeframe)
             start_time = end_time - timedelta(seconds=tf_seconds * limit * 1.5)
             
-            # yfinance 的 end 参数是不包含的（exclusive），需要加一天
+            # yfinance end is exclusive, add one day
             end_time_inclusive = end_time + timedelta(days=1)
             
-            # 获取数据
+            # fetch
             ticker = yf.Ticker(yf_symbol)
             df = ticker.history(
                 start=start_time,
@@ -171,7 +157,7 @@ class FuturesDataSource(BaseDataSource):
                 logger.warning(f"No data: {yf_symbol}")
                 return []
             
-            # 转换格式
+            # convert format
             klines = []
             for index, row in df.iterrows():
                 klines.append({
@@ -187,7 +173,7 @@ class FuturesDataSource(BaseDataSource):
             if len(klines) > limit:
                 klines = klines[-limit:]
             
-            # logger.info(f"获取到 {len(klines)} 条传统期货数据")
+            # logger.info(f"Fetched {len(klines)} traditional futures bars")
             return klines
             
         except Exception as e:
@@ -201,15 +187,15 @@ class FuturesDataSource(BaseDataSource):
         limit: int,
         before_time: Optional[int] = None
     ) -> List[Dict[str, Any]]:
-        """使用CCXT获取加密货币期货数据"""
+        """Fetch crypto futures via CCXT."""
         try:
-            # 确保symbol格式正确
+            # ensure symbol format
             ccxt_symbol = symbol if '/' in symbol else f"{symbol}/USDT"
             ccxt_timeframe = self.CCXT_TIMEFRAME_MAP.get(timeframe, '1d')
             
-            # logger.info(f"获取加密货币期货K线: {ccxt_symbol}, 周期: {ccxt_timeframe}, 条数: {limit}")
+            # logger.info(f"Crypto futures: {ccxt_symbol}, tf={ccxt_timeframe}, limit={limit}")
             
-            # 获取数据
+            # fetch
             if before_time:
                 since_time = before_time - limit * self._get_timeframe_seconds(timeframe)
                 ohlcv = self.exchange.fetch_ohlcv(
@@ -225,7 +211,7 @@ class FuturesDataSource(BaseDataSource):
                     limit=limit
                 )
             
-            # 转换格式
+            # convert format
             klines = []
             for candle in ohlcv:
                 klines.append({
@@ -237,7 +223,7 @@ class FuturesDataSource(BaseDataSource):
                     'volume': float(candle[5])
                 })
             
-            # logger.info(f"获取到 {len(klines)} 条加密货币期货数据")
+            # logger.info(f"Fetched {len(klines)} crypto futures bars")
             return klines
             
         except Exception as e:

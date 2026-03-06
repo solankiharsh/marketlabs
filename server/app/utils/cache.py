@@ -15,7 +15,7 @@ logger = get_logger(__name__)
 
 
 class MemoryCache:
-    """内存缓存（Redis 不可用时的备选方案）"""
+    """In-memory cache (fallback when Redis is unavailable)"""
     
     def __init__(self):
         self._cache = {}
@@ -47,7 +47,7 @@ class MemoryCache:
 
 
 class CacheManager:
-    """缓存管理器"""
+    """Cache manager"""
     
     _instance = None
     _lock = threading.Lock()
@@ -98,7 +98,7 @@ class CacheManager:
             self._use_redis = False
     
     def get(self, key: str) -> Optional[Any]:
-        """获取缓存"""
+        """Get cached value"""
         try:
             data = self._client.get(key)
             if data:
@@ -109,14 +109,14 @@ class CacheManager:
             return None
     
     def set(self, key: str, value: Any, ttl: int = 300):
-        """设置缓存"""
+        """Set cached value"""
         try:
             self._client.setex(key, ttl, json.dumps(value))
         except Exception as e:
             logger.error(f"Cache write failed: {e}")
     
     def delete(self, key: str):
-        """删除缓存"""
+        """Delete cached value"""
         try:
             self._client.delete(key)
         except Exception as e:

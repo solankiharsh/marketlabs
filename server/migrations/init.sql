@@ -1,11 +1,11 @@
--- Zing PostgreSQL Schema Initialization
+-- MarketLabs PostgreSQL Schema Initialization
 -- This script runs automatically when PostgreSQL container starts for the first time.
 
 -- =============================================================================
 -- 1. Users & Authentication
 -- =============================================================================
 
-CREATE TABLE IF NOT EXISTS qd_users (
+CREATE TABLE IF NOT EXISTS ml_users (
     id SERIAL PRIMARY KEY,
     username VARCHAR(50) UNIQUE NOT NULL,
     password_hash VARCHAR(255) NOT NULL,
@@ -14,73 +14,74 @@ CREATE TABLE IF NOT EXISTS qd_users (
     avatar VARCHAR(255) DEFAULT '/avatar2.jpg',
     status VARCHAR(20) DEFAULT 'active',  -- active/disabled/pending
     role VARCHAR(20) DEFAULT 'user',       -- admin/manager/user/viewer
-    credits DECIMAL(20,2) DEFAULT 0,       -- 积分余额
-    vip_expires_at TIMESTAMP,              -- VIP过期时间
-    vip_plan VARCHAR(20) DEFAULT '',       -- VIP套餐：monthly/yearly/lifetime
-    vip_is_lifetime BOOLEAN DEFAULT FALSE, -- 是否永久会员
-    vip_monthly_credits_last_grant TIMESTAMP, -- 永久会员上次发放月度积分时间
-    email_verified BOOLEAN DEFAULT FALSE,  -- 邮箱是否已验证
-    referred_by INTEGER,                   -- 邀请人ID
-    notification_settings TEXT DEFAULT '', -- 用户通知配置 JSON (telegram_chat_id, default_channels等)
-    token_version INTEGER DEFAULT 1,       -- Token版本号，用于单一客户端登录控制
+    credits DECIMAL(20,2) DEFAULT 0,       -- Credits balance
+    vip_expires_at TIMESTAMP,              -- VIP expiration time
+    vip_plan VARCHAR(20) DEFAULT '',       -- VIP plan: monthly/yearly/lifetime
+    vip_is_lifetime BOOLEAN DEFAULT FALSE, -- Whether the VIP is lifetime
+    vip_monthly_credits_last_grant TIMESTAMP, -- Last grant time of monthly credits for lifetime VIP
+    email_verified BOOLEAN DEFAULT FALSE,  -- Whether the email is verified
+    referred_by INTEGER,                   -- Referral ID
+    notification_settings TEXT DEFAULT '', -- User notification configuration JSON (telegram_chat_id, default_channels etc.)
+    token_version INTEGER DEFAULT 1,       -- Token version number, for single-client login control
     last_login_at TIMESTAMP,
     created_at TIMESTAMP DEFAULT NOW(),
     updated_at TIMESTAMP DEFAULT NOW()
 );
 
-CREATE INDEX IF NOT EXISTS idx_users_referred_by ON qd_users(referred_by);
+CREATE INDEX IF NOT EXISTS idx_users_referred_by ON ml_users(referred_by);
 
 -- Note: Admin user is created automatically by the application on startup
--- using ADMIN_USER and ADMIN_PASSWORD from environment variables
+-- using ADMIN_USER and ADMIN_PASSWORD from environment variables.
+-- Default username: marketlabs (set ADMIN_USER=marketlabs in server/.env).
 
 -- =============================================================================
--- 1.5. Credits Log (积分变动日志)
+-- 1.5. Credits Log (Credits change log)
 -- =============================================================================
 
-CREATE TABLE IF NOT EXISTS qd_credits_log (
+CREATE TABLE IF NOT EXISTS ml_credits_log (
     id SERIAL PRIMARY KEY,
-    user_id INTEGER NOT NULL REFERENCES qd_users(id) ON DELETE CASCADE,
+    user_id INTEGER NOT NULL REFERENCES ml_users(id) ON DELETE CASCADE,
     action VARCHAR(50) NOT NULL,            -- recharge/consume/refund/admin_adjust/vip_grant
-    amount DECIMAL(20,2) NOT NULL,          -- 变动金额（正数增加，负数减少）
-    balance_after DECIMAL(20,2) NOT NULL,   -- 变动后余额
-    feature VARCHAR(50) DEFAULT '',          -- 消费的功能：ai_analysis/strategy_run/backtest 等
-    reference_id VARCHAR(100) DEFAULT '',    -- 关联ID（如订单号、分析任务ID等）
-    remark TEXT DEFAULT '',                  -- 备注
-    operator_id INTEGER,                     -- 操作人ID（管理员调整时记录）
+    amount DECIMAL(20,2) NOT NULL,          -- Change amount (positive number increases, negative number decreases)
+    balance_after DECIMAL(20,2) NOT NULL,   -- Balance after change
+    feature VARCHAR(50) DEFAULT '',          -- Consumed feature: ai_analysis/strategy_run/backtest etc.
+    reference_id VARCHAR(100) DEFAULT '',    -- Reference ID (e.g. order number, analysis task ID etc.)
+    remark TEXT DEFAULT '',                  -- Remark
+    operator_id INTEGER,                     -- Operator ID (recorded when admin adjusts)
     created_at TIMESTAMP DEFAULT NOW()
 );
 
-CREATE INDEX IF NOT EXISTS idx_credits_log_user_id ON qd_credits_log(user_id);
-CREATE INDEX IF NOT EXISTS idx_credits_log_action ON qd_credits_log(action);
-CREATE INDEX IF NOT EXISTS idx_credits_log_created_at ON qd_credits_log(created_at);
+CREATE INDEX IF NOT EXISTS idx_credits_log_user_id ON ml_credits_log(user_id);
+CREATE INDEX IF NOT EXISTS idx_credits_log_action ON ml_credits_log(action);
+CREATE INDEX IF NOT EXISTS idx_credits_log_created_at ON ml_credits_log(created_at);
 
 -- =============================================================================
--- 1.55. Membership Orders (会员订单 - Mock支付)
+-- 1.55. Membership Orders (Membership order - Mock payment)
 -- =============================================================================
 
-CREATE TABLE IF NOT EXISTS qd_membership_orders (
+CREATE TABLE IF NOT EXISTS ml_membership_orders (
     id SERIAL PRIMARY KEY,
-    user_id INTEGER NOT NULL REFERENCES qd_users(id) ON DELETE CASCADE,
+    user_id INTEGER NOT NULL REFERENCES ml_users(id) ON DELETE CASCADE,
     plan VARCHAR(20) NOT NULL,             -- monthly/yearly/lifetime
-    price_usd DECIMAL(10,2) DEFAULT 0,     -- 订单金额（USD）
+    price_usd DECIMAL(10,2) DEFAULT 0,     -- Order amount (USD)
     status VARCHAR(20) DEFAULT 'paid',     -- paid/pending/failed/refunded (mock 默认 paid)
     created_at TIMESTAMP DEFAULT NOW(),
     paid_at TIMESTAMP
 );
 
-CREATE INDEX IF NOT EXISTS idx_membership_orders_user_id ON qd_membership_orders(user_id);
+CREATE INDEX IF NOT EXISTS idx_membership_orders_user_id ON ml_membership_orders(user_id);
 
 -- =============================================================================
--- 1.56. USDT Orders (USDT 收款订单 - 每单独立地址)
+-- 1.56. USDT Orders (USDT payment order - each order has a separate address)
 -- =============================================================================
 
-CREATE TABLE IF NOT EXISTS qd_usdt_orders (
+CREATE TABLE IF NOT EXISTS ml_usdt_orders (
     id SERIAL PRIMARY KEY,
-    user_id INTEGER NOT NULL REFERENCES qd_users(id) ON DELETE CASCADE,
+    user_id INTEGER NOT NULL REFERENCES ml_users(id) ON DELETE CASCADE,
     plan VARCHAR(20) NOT NULL,                 -- monthly/yearly/lifetime
     chain VARCHAR(20) NOT NULL DEFAULT 'TRC20',-- TRC20 (MVP)
     amount_usdt DECIMAL(20,6) NOT NULL DEFAULT 0,
-    address_index INTEGER NOT NULL DEFAULT 0,  -- HD 派生索引
+    address_index INTEGER NOT NULL DEFAULT 0,  -- HD derived index
     address VARCHAR(80) NOT NULL DEFAULT '',
     status VARCHAR(20) NOT NULL DEFAULT 'pending', -- pending/paid/confirmed/expired/cancelled/failed
     tx_hash VARCHAR(120) DEFAULT '',
@@ -91,15 +92,15 @@ CREATE TABLE IF NOT EXISTS qd_usdt_orders (
     updated_at TIMESTAMP DEFAULT NOW()
 );
 
-CREATE UNIQUE INDEX IF NOT EXISTS idx_usdt_orders_address_unique ON qd_usdt_orders(chain, address);
-CREATE INDEX IF NOT EXISTS idx_usdt_orders_user_id ON qd_usdt_orders(user_id);
-CREATE INDEX IF NOT EXISTS idx_usdt_orders_status ON qd_usdt_orders(status);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_usdt_orders_address_unique ON ml_usdt_orders(chain, address);
+CREATE INDEX IF NOT EXISTS idx_usdt_orders_user_id ON ml_usdt_orders(user_id);
+CREATE INDEX IF NOT EXISTS idx_usdt_orders_status ON ml_usdt_orders(status);
 
 -- =============================================================================
--- 1.6. Verification Codes (邮箱验证码)
+-- 1.6. Verification Codes (Email verification code)
 -- =============================================================================
 
-CREATE TABLE IF NOT EXISTS qd_verification_codes (
+CREATE TABLE IF NOT EXISTS ml_verification_codes (
     id SERIAL PRIMARY KEY,
     email VARCHAR(100) NOT NULL,
     code VARCHAR(10) NOT NULL,
@@ -112,15 +113,15 @@ CREATE TABLE IF NOT EXISTS qd_verification_codes (
     created_at TIMESTAMP DEFAULT NOW()
 );
 
-CREATE INDEX IF NOT EXISTS idx_verification_codes_email ON qd_verification_codes(email);
-CREATE INDEX IF NOT EXISTS idx_verification_codes_type ON qd_verification_codes(type);
-CREATE INDEX IF NOT EXISTS idx_verification_codes_expires ON qd_verification_codes(expires_at);
+CREATE INDEX IF NOT EXISTS idx_verification_codes_email ON ml_verification_codes(email);
+CREATE INDEX IF NOT EXISTS idx_verification_codes_type ON ml_verification_codes(type);
+CREATE INDEX IF NOT EXISTS idx_verification_codes_expires ON ml_verification_codes(expires_at);
 
 -- =============================================================================
--- 1.7. Login Attempts (登录尝试记录 - 防爆破)
+-- 1.7. Login Attempts (Login attempt record - anti-brute-force)
 -- =============================================================================
 
-CREATE TABLE IF NOT EXISTS qd_login_attempts (
+CREATE TABLE IF NOT EXISTS ml_login_attempts (
     id SERIAL PRIMARY KEY,
     identifier VARCHAR(100) NOT NULL,       -- IP address or username
     identifier_type VARCHAR(10) NOT NULL,   -- 'ip' or 'account'
@@ -130,16 +131,16 @@ CREATE TABLE IF NOT EXISTS qd_login_attempts (
     user_agent TEXT
 );
 
-CREATE INDEX IF NOT EXISTS idx_login_attempts_identifier ON qd_login_attempts(identifier, identifier_type);
-CREATE INDEX IF NOT EXISTS idx_login_attempts_time ON qd_login_attempts(attempt_time);
+CREATE INDEX IF NOT EXISTS idx_login_attempts_identifier ON ml_login_attempts(identifier, identifier_type);
+CREATE INDEX IF NOT EXISTS idx_login_attempts_time ON ml_login_attempts(attempt_time);
 
 -- =============================================================================
--- 1.8. OAuth Links (第三方账号关联)
+-- 1.8. OAuth Links (Third-party account association)
 -- =============================================================================
 
-CREATE TABLE IF NOT EXISTS qd_oauth_links (
+CREATE TABLE IF NOT EXISTS ml_oauth_links (
     id SERIAL PRIMARY KEY,
-    user_id INTEGER REFERENCES qd_users(id) ON DELETE CASCADE,
+    user_id INTEGER REFERENCES ml_users(id) ON DELETE CASCADE,
     provider VARCHAR(20) NOT NULL,          -- 'google' or 'github'
     provider_user_id VARCHAR(100) NOT NULL,
     provider_email VARCHAR(100),
@@ -152,14 +153,14 @@ CREATE TABLE IF NOT EXISTS qd_oauth_links (
     UNIQUE(provider, provider_user_id)
 );
 
-CREATE INDEX IF NOT EXISTS idx_oauth_links_user_id ON qd_oauth_links(user_id);
-CREATE INDEX IF NOT EXISTS idx_oauth_links_provider ON qd_oauth_links(provider);
+CREATE INDEX IF NOT EXISTS idx_oauth_links_user_id ON ml_oauth_links(user_id);
+CREATE INDEX IF NOT EXISTS idx_oauth_links_provider ON ml_oauth_links(provider);
 
 -- =============================================================================
--- 1.9. Security Audit Log (安全审计日志)
+-- 1.9. Security Audit Log (Security audit log)
 -- =============================================================================
 
-CREATE TABLE IF NOT EXISTS qd_security_logs (
+CREATE TABLE IF NOT EXISTS ml_security_logs (
     id SERIAL PRIMARY KEY,
     user_id INTEGER,
     action VARCHAR(50) NOT NULL,            -- login/logout/register/reset_password/oauth_login/etc
@@ -169,17 +170,17 @@ CREATE TABLE IF NOT EXISTS qd_security_logs (
     created_at TIMESTAMP DEFAULT NOW()
 );
 
-CREATE INDEX IF NOT EXISTS idx_security_logs_user_id ON qd_security_logs(user_id);
-CREATE INDEX IF NOT EXISTS idx_security_logs_action ON qd_security_logs(action);
-CREATE INDEX IF NOT EXISTS idx_security_logs_created_at ON qd_security_logs(created_at);
+CREATE INDEX IF NOT EXISTS idx_security_logs_user_id ON ml_security_logs(user_id);
+CREATE INDEX IF NOT EXISTS idx_security_logs_action ON ml_security_logs(action);
+CREATE INDEX IF NOT EXISTS idx_security_logs_created_at ON ml_security_logs(created_at);
 
 -- =============================================================================
 -- 2. Trading Strategies
 -- =============================================================================
 
-CREATE TABLE IF NOT EXISTS qd_strategies_trading (
+CREATE TABLE IF NOT EXISTS ml_strategies_trading (
     id SERIAL PRIMARY KEY,
-    user_id INTEGER NOT NULL DEFAULT 1 REFERENCES qd_users(id) ON DELETE CASCADE,
+    user_id INTEGER NOT NULL DEFAULT 1 REFERENCES ml_users(id) ON DELETE CASCADE,
     strategy_name VARCHAR(255) NOT NULL,
     strategy_type VARCHAR(50) DEFAULT 'IndicatorStrategy',
     market_category VARCHAR(50) DEFAULT 'Crypto',
@@ -202,19 +203,19 @@ CREATE TABLE IF NOT EXISTS qd_strategies_trading (
     updated_at TIMESTAMP DEFAULT NOW()
 );
 
-CREATE INDEX IF NOT EXISTS idx_strategies_user_id ON qd_strategies_trading(user_id);
-CREATE INDEX IF NOT EXISTS idx_strategies_status ON qd_strategies_trading(status);
-CREATE INDEX IF NOT EXISTS idx_strategies_group_id ON qd_strategies_trading(strategy_group_id);
+CREATE INDEX IF NOT EXISTS idx_strategies_user_id ON ml_strategies_trading(user_id);
+CREATE INDEX IF NOT EXISTS idx_strategies_status ON ml_strategies_trading(status);
+CREATE INDEX IF NOT EXISTS idx_strategies_group_id ON ml_strategies_trading(strategy_group_id);
 
 -- Add last_rebalance_at column for cross-sectional strategies (if not exists)
 DO $$
 BEGIN
     IF NOT EXISTS (
         SELECT 1 FROM information_schema.columns 
-        WHERE table_name = 'qd_strategies_trading' AND column_name = 'last_rebalance_at'
+        WHERE table_name = 'ml_strategies_trading' AND column_name = 'last_rebalance_at'
     ) THEN
-        ALTER TABLE qd_strategies_trading ADD COLUMN last_rebalance_at TIMESTAMP;
-        RAISE NOTICE 'Added last_rebalance_at column to qd_strategies_trading';
+        ALTER TABLE ml_strategies_trading ADD COLUMN last_rebalance_at TIMESTAMP;
+        RAISE NOTICE 'Added last_rebalance_at column to ml_strategies_trading';
     END IF;
 END $$;
 
@@ -222,10 +223,10 @@ END $$;
 -- 3. Strategy Positions
 -- =============================================================================
 
-CREATE TABLE IF NOT EXISTS qd_strategy_positions (
+CREATE TABLE IF NOT EXISTS ml_strategy_positions (
     id SERIAL PRIMARY KEY,
-    user_id INTEGER NOT NULL DEFAULT 1 REFERENCES qd_users(id) ON DELETE CASCADE,
-    strategy_id INTEGER REFERENCES qd_strategies_trading(id) ON DELETE CASCADE,
+    user_id INTEGER NOT NULL DEFAULT 1 REFERENCES ml_users(id) ON DELETE CASCADE,
+    strategy_id INTEGER REFERENCES ml_strategies_trading(id) ON DELETE CASCADE,
     symbol VARCHAR(50),
     side VARCHAR(10),  -- long/short
     size DECIMAL(20,8),
@@ -240,17 +241,17 @@ CREATE TABLE IF NOT EXISTS qd_strategy_positions (
     UNIQUE(strategy_id, symbol, side)
 );
 
-CREATE INDEX IF NOT EXISTS idx_positions_user_id ON qd_strategy_positions(user_id);
-CREATE INDEX IF NOT EXISTS idx_positions_strategy_id ON qd_strategy_positions(strategy_id);
+CREATE INDEX IF NOT EXISTS idx_positions_user_id ON ml_strategy_positions(user_id);
+CREATE INDEX IF NOT EXISTS idx_positions_strategy_id ON ml_strategy_positions(strategy_id);
 
 -- =============================================================================
 -- 4. Strategy Trades
 -- =============================================================================
 
-CREATE TABLE IF NOT EXISTS qd_strategy_trades (
+CREATE TABLE IF NOT EXISTS ml_strategy_trades (
     id SERIAL PRIMARY KEY,
-    user_id INTEGER NOT NULL DEFAULT 1 REFERENCES qd_users(id) ON DELETE CASCADE,
-    strategy_id INTEGER REFERENCES qd_strategies_trading(id) ON DELETE CASCADE,
+    user_id INTEGER NOT NULL DEFAULT 1 REFERENCES ml_users(id) ON DELETE CASCADE,
+    strategy_id INTEGER REFERENCES ml_strategies_trading(id) ON DELETE CASCADE,
     symbol VARCHAR(50),
     type VARCHAR(30),  -- open_long, close_short, etc.
     price DECIMAL(20,8),
@@ -262,9 +263,9 @@ CREATE TABLE IF NOT EXISTS qd_strategy_trades (
     created_at TIMESTAMP DEFAULT NOW()
 );
 
-CREATE INDEX IF NOT EXISTS idx_trades_user_id ON qd_strategy_trades(user_id);
-CREATE INDEX IF NOT EXISTS idx_trades_strategy_id ON qd_strategy_trades(strategy_id);
-CREATE INDEX IF NOT EXISTS idx_trades_created_at ON qd_strategy_trades(created_at);
+CREATE INDEX IF NOT EXISTS idx_trades_user_id ON ml_strategy_trades(user_id);
+CREATE INDEX IF NOT EXISTS idx_trades_strategy_id ON ml_strategy_trades(strategy_id);
+CREATE INDEX IF NOT EXISTS idx_trades_created_at ON ml_strategy_trades(created_at);
 
 -- =============================================================================
 -- 5. Pending Orders Queue
@@ -272,8 +273,8 @@ CREATE INDEX IF NOT EXISTS idx_trades_created_at ON qd_strategy_trades(created_a
 
 CREATE TABLE IF NOT EXISTS pending_orders (
     id SERIAL PRIMARY KEY,
-    user_id INTEGER NOT NULL DEFAULT 1 REFERENCES qd_users(id) ON DELETE CASCADE,
-    strategy_id INTEGER REFERENCES qd_strategies_trading(id) ON DELETE SET NULL,
+    user_id INTEGER NOT NULL DEFAULT 1 REFERENCES ml_users(id) ON DELETE CASCADE,
+    strategy_id INTEGER REFERENCES ml_strategies_trading(id) ON DELETE SET NULL,
     symbol VARCHAR(50) NOT NULL,
     signal_type VARCHAR(30) NOT NULL,
     signal_ts BIGINT,
@@ -309,10 +310,10 @@ CREATE INDEX IF NOT EXISTS idx_pending_orders_strategy_id ON pending_orders(stra
 -- 6. Strategy Notifications
 -- =============================================================================
 
-CREATE TABLE IF NOT EXISTS qd_strategy_notifications (
+CREATE TABLE IF NOT EXISTS ml_strategy_notifications (
     id SERIAL PRIMARY KEY,
-    user_id INTEGER NOT NULL DEFAULT 1 REFERENCES qd_users(id) ON DELETE CASCADE,
-    strategy_id INTEGER REFERENCES qd_strategies_trading(id) ON DELETE CASCADE,
+    user_id INTEGER NOT NULL DEFAULT 1 REFERENCES ml_users(id) ON DELETE CASCADE,
+    strategy_id INTEGER REFERENCES ml_strategies_trading(id) ON DELETE CASCADE,
     symbol VARCHAR(50) DEFAULT '',
     signal_type VARCHAR(30) DEFAULT '',
     channels VARCHAR(255) DEFAULT '',
@@ -323,15 +324,15 @@ CREATE TABLE IF NOT EXISTS qd_strategy_notifications (
     created_at TIMESTAMP DEFAULT NOW()
 );
 
-CREATE INDEX IF NOT EXISTS idx_notifications_user_id ON qd_strategy_notifications(user_id);
-CREATE INDEX IF NOT EXISTS idx_notifications_strategy_id ON qd_strategy_notifications(strategy_id);
-CREATE INDEX IF NOT EXISTS idx_notifications_is_read ON qd_strategy_notifications(is_read);
+CREATE INDEX IF NOT EXISTS idx_notifications_user_id ON ml_strategy_notifications(user_id);
+CREATE INDEX IF NOT EXISTS idx_notifications_strategy_id ON ml_strategy_notifications(strategy_id);
+CREATE INDEX IF NOT EXISTS idx_notifications_is_read ON ml_strategy_notifications(is_read);
 
 -- =============================================================================
 -- 7. Indicator Codes
 -- =============================================================================
 
-CREATE TABLE IF NOT EXISTS qd_indicator_codes (
+CREATE TABLE IF NOT EXISTS ml_indicator_codes (
    id serial4 NOT NULL,
    user_id int4 DEFAULT 1 NOT NULL,
    is_buy int4 DEFAULT 0 NOT NULL,
@@ -344,7 +345,7 @@ CREATE TABLE IF NOT EXISTS qd_indicator_codes (
    price numeric(10, 2) DEFAULT 0 NOT NULL,
    is_encrypted int4 DEFAULT 0 NOT NULL,
    preview_image varchar(500) DEFAULT ''::character varying NULL,
-   vip_free boolean DEFAULT false, -- VIP免费指标：VIP可免扣积分使用
+   vip_free boolean DEFAULT false, -- VIP free indicator: VIP can use without deducting credits
    createtime int8 NULL,
    updatetime int8 NULL,
    created_at timestamp DEFAULT now(),
@@ -357,34 +358,34 @@ CREATE TABLE IF NOT EXISTS qd_indicator_codes (
    review_note text DEFAULT ''::text NULL,
    reviewed_at timestamp NULL,
    reviewed_by int4 NULL,
-   CONSTRAINT qd_indicator_codes_pkey PRIMARY KEY (id),
-   CONSTRAINT qd_indicator_codes_user_id_fkey FOREIGN KEY (user_id) REFERENCES qd_users(id) ON DELETE CASCADE
+   CONSTRAINT ml_indicator_codes_pkey PRIMARY KEY (id),
+   CONSTRAINT ml_indicator_codes_user_id_fkey FOREIGN KEY (user_id) REFERENCES ml_users(id) ON DELETE CASCADE
 
 );
 
-CREATE INDEX IF NOT EXISTS idx_indicator_codes_user_id ON qd_indicator_codes USING btree (user_id);
-CREATE INDEX IF NOT EXISTS idx_indicator_review_status ON qd_indicator_codes USING btree (review_status);
+CREATE INDEX IF NOT EXISTS idx_indicator_codes_user_id ON ml_indicator_codes USING btree (user_id);
+CREATE INDEX IF NOT EXISTS idx_indicator_review_status ON ml_indicator_codes USING btree (review_status);
 
 -- =============================================================================
 -- 8. AI Decisions
 -- =============================================================================
 
-CREATE TABLE IF NOT EXISTS qd_ai_decisions (
+CREATE TABLE IF NOT EXISTS ml_ai_decisions (
     id SERIAL PRIMARY KEY,
-    user_id INTEGER NOT NULL DEFAULT 1 REFERENCES qd_users(id) ON DELETE CASCADE,
-    strategy_id INTEGER REFERENCES qd_strategies_trading(id) ON DELETE CASCADE,
+    user_id INTEGER NOT NULL DEFAULT 1 REFERENCES ml_users(id) ON DELETE CASCADE,
+    strategy_id INTEGER REFERENCES ml_strategies_trading(id) ON DELETE CASCADE,
     decision_data TEXT,
     context_data TEXT,
     created_at TIMESTAMP DEFAULT NOW()
 );
 
-CREATE INDEX IF NOT EXISTS idx_ai_decisions_user_id ON qd_ai_decisions(user_id);
+CREATE INDEX IF NOT EXISTS idx_ai_decisions_user_id ON ml_ai_decisions(user_id);
 
 -- =============================================================================
 -- 9. Addon Config
 -- =============================================================================
 
-CREATE TABLE IF NOT EXISTS qd_addon_config (
+CREATE TABLE IF NOT EXISTS ml_addon_config (
     config_key VARCHAR(100) PRIMARY KEY,
     config_value TEXT,
     type VARCHAR(20) DEFAULT 'string'
@@ -394,9 +395,9 @@ CREATE TABLE IF NOT EXISTS qd_addon_config (
 -- 10. Watchlist
 -- =============================================================================
 
-CREATE TABLE IF NOT EXISTS qd_watchlist (
+CREATE TABLE IF NOT EXISTS ml_watchlist (
     id SERIAL PRIMARY KEY,
-    user_id INTEGER DEFAULT 1 REFERENCES qd_users(id) ON DELETE CASCADE,
+    user_id INTEGER DEFAULT 1 REFERENCES ml_users(id) ON DELETE CASCADE,
     market VARCHAR(50) NOT NULL,
     symbol VARCHAR(50) NOT NULL,
     name VARCHAR(100) DEFAULT '',
@@ -405,15 +406,15 @@ CREATE TABLE IF NOT EXISTS qd_watchlist (
     UNIQUE(user_id, market, symbol)
 );
 
-CREATE INDEX IF NOT EXISTS idx_watchlist_user_id ON qd_watchlist(user_id);
+CREATE INDEX IF NOT EXISTS idx_watchlist_user_id ON ml_watchlist(user_id);
 
 -- =============================================================================
 -- 11. Analysis Tasks
 -- =============================================================================
 
-CREATE TABLE IF NOT EXISTS qd_analysis_tasks (
+CREATE TABLE IF NOT EXISTS ml_analysis_tasks (
     id SERIAL PRIMARY KEY,
-    user_id INTEGER DEFAULT 1 REFERENCES qd_users(id) ON DELETE CASCADE,
+    user_id INTEGER DEFAULT 1 REFERENCES ml_users(id) ON DELETE CASCADE,
     market VARCHAR(50) NOT NULL,
     symbol VARCHAR(50) NOT NULL,
     model VARCHAR(100) DEFAULT '',
@@ -425,15 +426,15 @@ CREATE TABLE IF NOT EXISTS qd_analysis_tasks (
     completed_at TIMESTAMP
 );
 
-CREATE INDEX IF NOT EXISTS idx_analysis_tasks_user_id ON qd_analysis_tasks(user_id);
+CREATE INDEX IF NOT EXISTS idx_analysis_tasks_user_id ON ml_analysis_tasks(user_id);
 
 -- =============================================================================
 -- 12. Backtest Runs
 -- =============================================================================
 
-CREATE TABLE IF NOT EXISTS qd_backtest_runs (
+CREATE TABLE IF NOT EXISTS ml_backtest_runs (
     id SERIAL PRIMARY KEY,
-    user_id INTEGER NOT NULL DEFAULT 1 REFERENCES qd_users(id) ON DELETE CASCADE,
+    user_id INTEGER NOT NULL DEFAULT 1 REFERENCES ml_users(id) ON DELETE CASCADE,
     indicator_id INTEGER,
     market VARCHAR(50) NOT NULL DEFAULT '',
     symbol VARCHAR(50) NOT NULL DEFAULT '',
@@ -452,16 +453,16 @@ CREATE TABLE IF NOT EXISTS qd_backtest_runs (
     created_at TIMESTAMP DEFAULT NOW()
 );
 
-CREATE INDEX IF NOT EXISTS idx_backtest_runs_user_id ON qd_backtest_runs(user_id);
-CREATE INDEX IF NOT EXISTS idx_backtest_runs_indicator_id ON qd_backtest_runs(indicator_id);
+CREATE INDEX IF NOT EXISTS idx_backtest_runs_user_id ON ml_backtest_runs(user_id);
+CREATE INDEX IF NOT EXISTS idx_backtest_runs_indicator_id ON ml_backtest_runs(indicator_id);
 
 -- =============================================================================
 -- 13. Exchange Credentials
 -- =============================================================================
 
-CREATE TABLE IF NOT EXISTS qd_exchange_credentials (
+CREATE TABLE IF NOT EXISTS ml_exchange_credentials (
     id SERIAL PRIMARY KEY,
-    user_id INTEGER NOT NULL DEFAULT 1 REFERENCES qd_users(id) ON DELETE CASCADE,
+    user_id INTEGER NOT NULL DEFAULT 1 REFERENCES ml_users(id) ON DELETE CASCADE,
     name VARCHAR(100) DEFAULT '',
     exchange_id VARCHAR(50) NOT NULL,
     api_key_hint VARCHAR(50) DEFAULT '',
@@ -470,15 +471,15 @@ CREATE TABLE IF NOT EXISTS qd_exchange_credentials (
     updated_at TIMESTAMP DEFAULT NOW()
 );
 
-CREATE INDEX IF NOT EXISTS idx_exchange_credentials_user_id ON qd_exchange_credentials(user_id);
+CREATE INDEX IF NOT EXISTS idx_exchange_credentials_user_id ON ml_exchange_credentials(user_id);
 
 -- =============================================================================
 -- 14. Manual Positions
 -- =============================================================================
 
-CREATE TABLE IF NOT EXISTS qd_manual_positions (
+CREATE TABLE IF NOT EXISTS ml_manual_positions (
     id SERIAL PRIMARY KEY,
-    user_id INTEGER NOT NULL DEFAULT 1 REFERENCES qd_users(id) ON DELETE CASCADE,
+    user_id INTEGER NOT NULL DEFAULT 1 REFERENCES ml_users(id) ON DELETE CASCADE,
     market VARCHAR(50) NOT NULL,
     symbol VARCHAR(50) NOT NULL,
     name VARCHAR(100) DEFAULT '',
@@ -494,15 +495,15 @@ CREATE TABLE IF NOT EXISTS qd_manual_positions (
     UNIQUE(user_id, market, symbol, side, group_name)
 );
 
-CREATE INDEX IF NOT EXISTS idx_manual_positions_user_id ON qd_manual_positions(user_id);
+CREATE INDEX IF NOT EXISTS idx_manual_positions_user_id ON ml_manual_positions(user_id);
 
 -- =============================================================================
 -- 15. Position Alerts
 -- =============================================================================
 
-CREATE TABLE IF NOT EXISTS qd_position_alerts (
+CREATE TABLE IF NOT EXISTS ml_position_alerts (
     id SERIAL PRIMARY KEY,
-    user_id INTEGER NOT NULL DEFAULT 1 REFERENCES qd_users(id) ON DELETE CASCADE,
+    user_id INTEGER NOT NULL DEFAULT 1 REFERENCES ml_users(id) ON DELETE CASCADE,
     position_id INTEGER,
     market VARCHAR(50) DEFAULT '',
     symbol VARCHAR(50) DEFAULT '',
@@ -519,16 +520,16 @@ CREATE TABLE IF NOT EXISTS qd_position_alerts (
     updated_at TIMESTAMP DEFAULT NOW()
 );
 
-CREATE INDEX IF NOT EXISTS idx_position_alerts_user_id ON qd_position_alerts(user_id);
-CREATE INDEX IF NOT EXISTS idx_position_alerts_position_id ON qd_position_alerts(position_id);
+CREATE INDEX IF NOT EXISTS idx_position_alerts_user_id ON ml_position_alerts(user_id);
+CREATE INDEX IF NOT EXISTS idx_position_alerts_position_id ON ml_position_alerts(position_id);
 
 -- =============================================================================
 -- 16. Position Monitors
 -- =============================================================================
 
-CREATE TABLE IF NOT EXISTS qd_position_monitors (
+CREATE TABLE IF NOT EXISTS ml_position_monitors (
     id SERIAL PRIMARY KEY,
-    user_id INTEGER NOT NULL DEFAULT 1 REFERENCES qd_users(id) ON DELETE CASCADE,
+    user_id INTEGER NOT NULL DEFAULT 1 REFERENCES ml_users(id) ON DELETE CASCADE,
     name VARCHAR(100) DEFAULT '',
     position_ids TEXT DEFAULT '',
     monitor_type VARCHAR(20) DEFAULT 'ai',
@@ -543,13 +544,13 @@ CREATE TABLE IF NOT EXISTS qd_position_monitors (
     updated_at TIMESTAMP DEFAULT NOW()
 );
 
-CREATE INDEX IF NOT EXISTS idx_position_monitors_user_id ON qd_position_monitors(user_id);
+CREATE INDEX IF NOT EXISTS idx_position_monitors_user_id ON ml_position_monitors(user_id);
 
 -- =============================================================================
 -- 17. Market Symbols (Seed Data)
 -- =============================================================================
 
-CREATE TABLE IF NOT EXISTS qd_market_symbols (
+CREATE TABLE IF NOT EXISTS ml_market_symbols (
     id SERIAL PRIMARY KEY,
     market VARCHAR(50) NOT NULL,
     symbol VARCHAR(50) NOT NULL,
@@ -563,11 +564,11 @@ CREATE TABLE IF NOT EXISTS qd_market_symbols (
     UNIQUE(market, symbol)
 );
 
-CREATE INDEX IF NOT EXISTS idx_market_symbols_market ON qd_market_symbols(market);
-CREATE INDEX IF NOT EXISTS idx_market_symbols_is_hot ON qd_market_symbols(market, is_hot);
+CREATE INDEX IF NOT EXISTS idx_market_symbols_market ON ml_market_symbols(market);
+CREATE INDEX IF NOT EXISTS idx_market_symbols_is_hot ON ml_market_symbols(market, is_hot);
 
 -- Seed data: Hot symbols for each market
-INSERT INTO qd_market_symbols (market, symbol, name, exchange, currency, is_active, is_hot, sort_order) VALUES
+INSERT INTO ml_market_symbols (market, symbol, name, exchange, currency, is_active, is_hot, sort_order) VALUES
 -- USStock (US Stocks)
 ('USStock', 'AAPL', 'Apple Inc.', 'NASDAQ', 'USD', 1, 1, 100),
 ('USStock', 'MSFT', 'Microsoft Corporation', 'NASDAQ', 'USD', 1, 1, 99),
@@ -620,7 +621,7 @@ ON CONFLICT (market, symbol) DO NOTHING;
 -- Stores agent decision experiences for RAG-style retrieval during analysis.
 -- Each agent (trader, risk_analyst, etc.) shares this table but is identified by agent_name.
 
-CREATE TABLE IF NOT EXISTS qd_agent_memories (
+CREATE TABLE IF NOT EXISTS ml_agent_memories (
     id SERIAL PRIMARY KEY,
     agent_name VARCHAR(100) NOT NULL,
     situation TEXT NOT NULL,
@@ -636,16 +637,16 @@ CREATE TABLE IF NOT EXISTS qd_agent_memories (
     updated_at TIMESTAMP DEFAULT NOW()
 );
 
-CREATE INDEX IF NOT EXISTS idx_agent_memories_agent ON qd_agent_memories(agent_name);
-CREATE INDEX IF NOT EXISTS idx_agent_memories_created ON qd_agent_memories(agent_name, created_at DESC);
-CREATE INDEX IF NOT EXISTS idx_agent_memories_market ON qd_agent_memories(agent_name, market, symbol);
+CREATE INDEX IF NOT EXISTS idx_agent_memories_agent ON ml_agent_memories(agent_name);
+CREATE INDEX IF NOT EXISTS idx_agent_memories_created ON ml_agent_memories(agent_name, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_agent_memories_market ON ml_agent_memories(agent_name, market, symbol);
 
 -- =============================================================================
 -- 19. Reflection Records (AI Auto-Verification System)
 -- =============================================================================
 -- Records analysis predictions for future auto-verification and closed-loop learning.
 
-CREATE TABLE IF NOT EXISTS qd_reflection_records (
+CREATE TABLE IF NOT EXISTS ml_reflection_records (
     id SERIAL PRIMARY KEY,
     market VARCHAR(50) NOT NULL,
     symbol VARCHAR(50) NOT NULL,
@@ -661,15 +662,15 @@ CREATE TABLE IF NOT EXISTS qd_reflection_records (
     check_result TEXT
 );
 
-CREATE INDEX IF NOT EXISTS idx_reflection_status ON qd_reflection_records(status, target_check_date);
-CREATE INDEX IF NOT EXISTS idx_reflection_market ON qd_reflection_records(market, symbol);
+CREATE INDEX IF NOT EXISTS idx_reflection_status ON ml_reflection_records(status, target_check_date);
+CREATE INDEX IF NOT EXISTS idx_reflection_market ON ml_reflection_records(market, symbol);
 
 -- =============================================================================
 -- 19.5. Analysis Memory (Fast AI Analysis Memory System)
 -- =============================================================================
 -- Stores AI analysis results for history, feedback, and learning.
 
-CREATE TABLE IF NOT EXISTS qd_analysis_memory (
+CREATE TABLE IF NOT EXISTS ml_analysis_memory (
     id SERIAL PRIMARY KEY,
     user_id INT,                                -- User who created this analysis (for filtering)
     market VARCHAR(50) NOT NULL,
@@ -695,21 +696,21 @@ CREATE TABLE IF NOT EXISTS qd_analysis_memory (
     feedback_at TIMESTAMP
 );
 
-CREATE INDEX IF NOT EXISTS idx_analysis_memory_symbol ON qd_analysis_memory(market, symbol);
-CREATE INDEX IF NOT EXISTS idx_analysis_memory_created ON qd_analysis_memory(created_at DESC);
-CREATE INDEX IF NOT EXISTS idx_analysis_memory_validated ON qd_analysis_memory(validated_at) WHERE validated_at IS NOT NULL;
-CREATE INDEX IF NOT EXISTS idx_analysis_memory_user ON qd_analysis_memory(user_id);
+CREATE INDEX IF NOT EXISTS idx_analysis_memory_symbol ON ml_analysis_memory(market, symbol);
+CREATE INDEX IF NOT EXISTS idx_analysis_memory_created ON ml_analysis_memory(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_analysis_memory_validated ON ml_analysis_memory(validated_at) WHERE validated_at IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_analysis_memory_user ON ml_analysis_memory(user_id);
 
--- Migration: Add user_id column to existing qd_analysis_memory table
+-- Migration: Add user_id column to existing ml_analysis_memory table
 DO $$
 BEGIN
     IF NOT EXISTS (
         SELECT 1 FROM information_schema.columns 
-        WHERE table_name = 'qd_analysis_memory' AND column_name = 'user_id'
+        WHERE table_name = 'ml_analysis_memory' AND column_name = 'user_id'
     ) THEN
-        ALTER TABLE qd_analysis_memory ADD COLUMN user_id INT;
-        CREATE INDEX IF NOT EXISTS idx_analysis_memory_user ON qd_analysis_memory(user_id);
-        RAISE NOTICE 'Added user_id column to qd_analysis_memory';
+        ALTER TABLE ml_analysis_memory ADD COLUMN user_id INT;
+        CREATE INDEX IF NOT EXISTS idx_analysis_memory_user ON ml_analysis_memory(user_id);
+        RAISE NOTICE 'Added user_id column to ml_analysis_memory';
     END IF;
 END $$;
 
@@ -724,10 +725,10 @@ DO $$
 BEGIN
     IF NOT EXISTS (
         SELECT 1 FROM information_schema.columns 
-        WHERE table_name = 'qd_users' AND column_name = 'token_version'
+        WHERE table_name = 'ml_users' AND column_name = 'token_version'
     ) THEN
-        ALTER TABLE qd_users ADD COLUMN token_version INTEGER DEFAULT 1;
-        RAISE NOTICE 'Added token_version column to qd_users table';
+        ALTER TABLE ml_users ADD COLUMN token_version INTEGER DEFAULT 1;
+        RAISE NOTICE 'Added token_version column to ml_users table';
     END IF;
 END $$;
 
@@ -735,169 +736,77 @@ END $$;
 -- 21. Indicator Community Tables
 -- =============================================================================
 
--- Indicator Purchases (购买记录)
-CREATE TABLE IF NOT EXISTS qd_indicator_purchases (
+-- Indicator Purchases (Purchase record)
+CREATE TABLE IF NOT EXISTS ml_indicator_purchases (
     id SERIAL PRIMARY KEY,
-    indicator_id INTEGER NOT NULL REFERENCES qd_indicator_codes(id) ON DELETE CASCADE,
-    buyer_id INTEGER NOT NULL REFERENCES qd_users(id) ON DELETE CASCADE,
-    seller_id INTEGER NOT NULL REFERENCES qd_users(id),
+    indicator_id INTEGER NOT NULL REFERENCES ml_indicator_codes(id) ON DELETE CASCADE,
+    buyer_id INTEGER NOT NULL REFERENCES ml_users(id) ON DELETE CASCADE,
+    seller_id INTEGER NOT NULL REFERENCES ml_users(id),
     price DECIMAL(10,2) NOT NULL DEFAULT 0,
     created_at TIMESTAMP DEFAULT NOW(),
     UNIQUE(indicator_id, buyer_id)
 );
 
-CREATE INDEX IF NOT EXISTS idx_purchases_indicator ON qd_indicator_purchases(indicator_id);
-CREATE INDEX IF NOT EXISTS idx_purchases_buyer ON qd_indicator_purchases(buyer_id);
-CREATE INDEX IF NOT EXISTS idx_purchases_seller ON qd_indicator_purchases(seller_id);
+CREATE INDEX IF NOT EXISTS idx_purchases_indicator ON ml_indicator_purchases(indicator_id);
+CREATE INDEX IF NOT EXISTS idx_purchases_buyer ON ml_indicator_purchases(buyer_id);
+CREATE INDEX IF NOT EXISTS idx_purchases_seller ON ml_indicator_purchases(seller_id);
 
--- Indicator Comments (评论)
-CREATE TABLE IF NOT EXISTS qd_indicator_comments (
+-- Indicator Comments (Comments)
+CREATE TABLE IF NOT EXISTS ml_indicator_comments (
     id SERIAL PRIMARY KEY,
-    indicator_id INTEGER NOT NULL REFERENCES qd_indicator_codes(id) ON DELETE CASCADE,
-    user_id INTEGER NOT NULL REFERENCES qd_users(id) ON DELETE CASCADE,
+    indicator_id INTEGER NOT NULL REFERENCES ml_indicator_codes(id) ON DELETE CASCADE,
+    user_id INTEGER NOT NULL REFERENCES ml_users(id) ON DELETE CASCADE,
     rating INTEGER DEFAULT 5 CHECK (rating >= 1 AND rating <= 5),
     content TEXT DEFAULT '',
-    parent_id INTEGER REFERENCES qd_indicator_comments(id) ON DELETE CASCADE,
+    parent_id INTEGER REFERENCES ml_indicator_comments(id) ON DELETE CASCADE,
     is_deleted INTEGER DEFAULT 0,
     created_at TIMESTAMP DEFAULT NOW(),
     updated_at TIMESTAMP DEFAULT NOW()
 );
 
-CREATE INDEX IF NOT EXISTS idx_comments_indicator ON qd_indicator_comments(indicator_id);
-CREATE INDEX IF NOT EXISTS idx_comments_user ON qd_indicator_comments(user_id);
+CREATE INDEX IF NOT EXISTS idx_comments_indicator ON ml_indicator_comments(indicator_id);
+CREATE INDEX IF NOT EXISTS idx_comments_user ON ml_indicator_comments(user_id);
 
--- Add community stats columns to qd_indicator_codes
+-- Add community stats columns to ml_indicator_codes
 DO $$
 BEGIN
     IF NOT EXISTS (
         SELECT 1 FROM information_schema.columns 
-        WHERE table_name = 'qd_indicator_codes' AND column_name = 'purchase_count'
+        WHERE table_name = 'ml_indicator_codes' AND column_name = 'purchase_count'
     ) THEN
-        ALTER TABLE qd_indicator_codes ADD COLUMN purchase_count INTEGER DEFAULT 0;
-        RAISE NOTICE 'Added purchase_count column to qd_indicator_codes';
+        ALTER TABLE ml_indicator_codes ADD COLUMN purchase_count INTEGER DEFAULT 0;
+        RAISE NOTICE 'Added purchase_count column to ml_indicator_codes';
     END IF;
     
     IF NOT EXISTS (
         SELECT 1 FROM information_schema.columns 
-        WHERE table_name = 'qd_indicator_codes' AND column_name = 'avg_rating'
+        WHERE table_name = 'ml_indicator_codes' AND column_name = 'avg_rating'
     ) THEN
-        ALTER TABLE qd_indicator_codes ADD COLUMN avg_rating DECIMAL(3,2) DEFAULT 0;
-        RAISE NOTICE 'Added avg_rating column to qd_indicator_codes';
+        ALTER TABLE ml_indicator_codes ADD COLUMN avg_rating DECIMAL(3,2) DEFAULT 0;
+        RAISE NOTICE 'Added avg_rating column to ml_indicator_codes';
     END IF;
     
     IF NOT EXISTS (
         SELECT 1 FROM information_schema.columns 
-        WHERE table_name = 'qd_indicator_codes' AND column_name = 'rating_count'
+        WHERE table_name = 'ml_indicator_codes' AND column_name = 'rating_count'
     ) THEN
-        ALTER TABLE qd_indicator_codes ADD COLUMN rating_count INTEGER DEFAULT 0;
-        RAISE NOTICE 'Added rating_count column to qd_indicator_codes';
+        ALTER TABLE ml_indicator_codes ADD COLUMN rating_count INTEGER DEFAULT 0;
+        RAISE NOTICE 'Added rating_count column to ml_indicator_codes';
     END IF;
     
     IF NOT EXISTS (
         SELECT 1 FROM information_schema.columns 
-        WHERE table_name = 'qd_indicator_codes' AND column_name = 'view_count'
+        WHERE table_name = 'ml_indicator_codes' AND column_name = 'view_count'
     ) THEN
-        ALTER TABLE qd_indicator_codes ADD COLUMN view_count INTEGER DEFAULT 0;
-        RAISE NOTICE 'Added view_count column to qd_indicator_codes';
+        ALTER TABLE ml_indicator_codes ADD COLUMN view_count INTEGER DEFAULT 0;
+        RAISE NOTICE 'Added view_count column to ml_indicator_codes';
     END IF;
 END $$;
-
--- =============================================================================
--- Quick Trades (manual / discretionary orders from Quick Trade Panel)
--- =============================================================================
-CREATE TABLE IF NOT EXISTS qd_quick_trades (
-    id              SERIAL PRIMARY KEY,
-    user_id         INTEGER NOT NULL REFERENCES qd_users(id) ON DELETE CASCADE,
-    credential_id   INTEGER DEFAULT 0,
-    exchange_id     VARCHAR(40) NOT NULL DEFAULT '',
-    symbol          VARCHAR(60) NOT NULL DEFAULT '',
-    side            VARCHAR(10) NOT NULL DEFAULT '',       -- buy / sell
-    order_type      VARCHAR(20) NOT NULL DEFAULT 'market', -- market / limit
-    amount          DECIMAL(24, 8) DEFAULT 0,
-    price           DECIMAL(24, 8) DEFAULT 0,
-    leverage        INTEGER DEFAULT 1,
-    market_type     VARCHAR(20) DEFAULT 'swap',            -- swap / spot
-    tp_price        DECIMAL(24, 8) DEFAULT 0,
-    sl_price        DECIMAL(24, 8) DEFAULT 0,
-    status          VARCHAR(20) DEFAULT 'submitted',       -- submitted / filled / failed / cancelled
-    exchange_order_id VARCHAR(120) DEFAULT '',
-    filled_amount   DECIMAL(24, 8) DEFAULT 0,
-    avg_fill_price  DECIMAL(24, 8) DEFAULT 0,
-    error_msg       TEXT DEFAULT '',
-    source          VARCHAR(40) DEFAULT 'manual',          -- ai_radar / ai_analysis / indicator / manual
-    raw_result      JSONB,
-    created_at      TIMESTAMP DEFAULT NOW()
-);
-
-CREATE INDEX IF NOT EXISTS idx_quick_trades_user    ON qd_quick_trades(user_id);
-CREATE INDEX IF NOT EXISTS idx_quick_trades_created ON qd_quick_trades(created_at DESC);
-
--- =============================================================================
--- Polymarket Prediction Markets (预测市场数据和分析)
--- =============================================================================
-
--- 预测市场表（缓存）
-CREATE TABLE IF NOT EXISTS qd_polymarket_markets (
-    id SERIAL PRIMARY KEY,
-    market_id VARCHAR(255) UNIQUE NOT NULL,
-    question TEXT,
-    category VARCHAR(100),  -- crypto, politics, economics, sports
-    current_probability DECIMAL(5,2),  -- YES概率（0-100）
-    volume_24h DECIMAL(20,2),
-    liquidity DECIMAL(20,2),
-    end_date_iso TIMESTAMP,
-    status VARCHAR(50),  -- active, closed, resolved
-    outcome_tokens JSONB,  -- YES/NO价格和交易量
-    slug VARCHAR(255),  -- Polymarket事件slug，用于构建URL
-    created_at TIMESTAMP DEFAULT NOW(),
-    updated_at TIMESTAMP DEFAULT NOW()
-);
-
-CREATE INDEX IF NOT EXISTS idx_polymarket_category ON qd_polymarket_markets(category);
-CREATE INDEX IF NOT EXISTS idx_polymarket_status ON qd_polymarket_markets(status);
-CREATE INDEX IF NOT EXISTS idx_polymarket_updated ON qd_polymarket_markets(updated_at DESC);
-
--- AI分析记录表
-CREATE TABLE IF NOT EXISTS qd_polymarket_ai_analysis (
-    id SERIAL PRIMARY KEY,
-    market_id VARCHAR(255) NOT NULL,
-    user_id INTEGER,  -- 可选：用户特定的分析
-    ai_predicted_probability DECIMAL(5,2),
-    market_probability DECIMAL(5,2),
-    divergence DECIMAL(5,2),  -- AI - 市场
-    recommendation VARCHAR(20),  -- YES/NO/HOLD
-    confidence_score DECIMAL(5,2),
-    opportunity_score DECIMAL(5,2),
-    reasoning TEXT,
-    key_factors JSONB,
-    related_assets TEXT[],  -- 相关资产列表
-    created_at TIMESTAMP DEFAULT NOW()
-);
-
-CREATE INDEX IF NOT EXISTS idx_polymarket_analysis_market ON qd_polymarket_ai_analysis(market_id);
-CREATE INDEX IF NOT EXISTS idx_polymarket_analysis_opportunity ON qd_polymarket_ai_analysis(opportunity_score DESC);
-CREATE INDEX IF NOT EXISTS idx_polymarket_analysis_user ON qd_polymarket_ai_analysis(user_id);
-
--- 资产交易机会表（基于预测市场生成）
-CREATE TABLE IF NOT EXISTS qd_polymarket_asset_opportunities (
-    id SERIAL PRIMARY KEY,
-    market_id VARCHAR(255) NOT NULL,
-    asset_symbol VARCHAR(100),
-    asset_market VARCHAR(50),
-    signal VARCHAR(20),  -- BUY/SELL/HOLD
-    confidence DECIMAL(5,2),
-    reasoning TEXT,
-    entry_suggestion JSONB,  -- 入场建议
-    created_at TIMESTAMP DEFAULT NOW()
-);
-
-CREATE INDEX IF NOT EXISTS idx_polymarket_opp_market ON qd_polymarket_asset_opportunities(market_id);
-CREATE INDEX IF NOT EXISTS idx_polymarket_opp_asset ON qd_polymarket_asset_opportunities(asset_symbol, asset_market);
 
 -- =============================================================================
 -- Completion Notice
 -- =============================================================================
 DO $$
 BEGIN
-    RAISE NOTICE 'Zing PostgreSQL schema initialized successfully!';
+    RAISE NOTICE 'MarketLabs PostgreSQL schema initialized successfully!';
 END $$;

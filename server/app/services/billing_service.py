@@ -1,9 +1,12 @@
 """
-Billing Service - unified credits and VIP.
+Billing Service - Unified Billing Service
 
-Manages user credits consumption, VIP status, and billing config.
-Modes: per-feature credit deduction; VIP free during validity.
-Config via .env / Settings UI.
+Manages user credit consumption, VIP status checks, billing configuration, etc.
+Supports two billing modes:
+1. Credit consumption mode: deduct credits for each feature usage
+2. VIP free mode: VIP users can use features for free during the validity period
+
+Billing configuration is stored in the .env file and can be configured via the system settings UI.
 """
 import os
 import time
@@ -16,17 +19,23 @@ from app.utils.logger import get_logger
 
 logger = get_logger(__name__)
 
+
+# Feature billing configuration key prefix
 BILLING_CONFIG_PREFIX = 'BILLING_'
 
+# Default billing configuration
 DEFAULT_BILLING_CONFIG = {
-    'enabled': False,
-    'vip_bypass': False,
-    'cost_ai_analysis': 10,
-    'cost_strategy_run': 5,
-    'cost_backtest': 3,
-    'cost_portfolio_monitor': 8,
-    'cost_indicator_create': 0,
-    'cost_polymarket_deep_analysis': 15,
+    # Global switch
+    'enabled': False,  # Whether billing is enabled
+    # IMPORTANT: VIP no longer bypasses credit deduction by default (VIP only applies to “VIP-free indicators”)
+    'vip_bypass': False,  # Whether VIP users are exempt from charges (feature billing bypass, disabled by default)
+
+    # Credit cost per feature (0 means free)
+    'cost_ai_analysis': 10,       # AI analysis credits per use
+    'cost_strategy_run': 5,       # Strategy run credits per use (at startup)
+    'cost_backtest': 3,           # Backtest credits per use
+    'cost_portfolio_monitor': 8,  # Portfolio AI monitor credits per use
+    'cost_indicator_create': 0,   # Create indicator - free
 }
 
 # Feature name mapping (for log recording)
@@ -36,20 +45,19 @@ FEATURE_NAMES = {
     'backtest': 'Backtest',
     'portfolio_monitor': 'Portfolio Monitor',
     'indicator_create': 'Indicator Create',
-    'polymarket_deep_analysis': 'Polymarket Deep Analysis',
 }
 
 
 class BillingService:
-    """Billing service (credits and VIP)."""
-
+    """Billing service class"""
+    
     def __init__(self):
         self._config_cache = None
         self._config_cache_time = 0
-        self._cache_ttl = 60
-
+        self._cache_ttl = 60  # Config cache TTL: 60 seconds
+    
     def get_billing_config(self) -> Dict[str, Any]:
-        """Get billing config from env."""
+        """Get billing configuration"""
         now = time.time()
         if self._config_cache and (now - self._config_cache_time) < self._cache_ttl:
             return self._config_cache
@@ -76,28 +84,28 @@ class BillingService:
         return config
     
     def clear_config_cache(self):
-        """Clear config cache."""
+        """Clear configuration cache"""
         self._config_cache = None
         self._config_cache_time = 0
-
+    
     def is_billing_enabled(self) -> bool:
-        """Check if billing is enabled."""
+        """Check if billing is enabled"""
         config = self.get_billing_config()
         return config.get('enabled', False)
-
+    
     def get_feature_cost(self, feature: str) -> int:
-        """Get credit cost for a feature."""
+        """Get the credit cost for a feature"""
         config = self.get_billing_config()
         cost_key = f'cost_{feature}'
         return config.get(cost_key, 0)
-
+    
     def get_user_credits(self, user_id: int) -> Decimal:
-        """Get user credit balance."""
+        """Get user credit balance"""
         try:
             with get_db_connection() as db:
                 cur = db.cursor()
                 cur.execute(
-                    "SELECT credits FROM qd_users WHERE id = ?",
+                    "SELECT credits FROM ml_users WHERE id = ?",
                     (user_id,)
                 )
                 row = cur.fetchone()
@@ -111,10 +119,16 @@ class BillingService:
             return Decimal('0')
     
     def get_user_vip_status(self, user_id: int) -> Tuple[bool, Optional[datetime]]:
-        """Get user VIP status. Returns (is_vip, expires_at)."""
+        """
+        Get user VIP status
+
+        Returns:
+            (is_vip, expires_at): Whether VIP is active, VIP expiration time
+        """
         try:
             with get_db_connection() as db:
                 cur = db.cursor()
+                # Ensure lifetime membership monthly credits are granted (best-effort, silent on failure).
                 self._ensure_membership_schema_best_effort(cur)
                 self._grant_lifetime_monthly_credits_best_effort(cur, user_id)
                 try:
@@ -122,14 +136,17 @@ class BillingService:
                 except Exception:
                     pass
 
-                cur.execute("SELECT vip_expires_at FROM qd_users WHERE id = ?", (user_id,))
+                cur.execute("SELECT vip_expires_at FROM ml_users WHERE id = ?", (user_id,))
                 row = cur.fetchone()
                 cur.close()
-
+                
                 if row and row.get('vip_expires_at'):
                     expires_at = row['vip_expires_at']
+                    # Ensure it is a datetime object
                     if isinstance(expires_at, str):
                         expires_at = datetime.fromisoformat(expires_at.replace('Z', '+00:00'))
+                    
+                    # Check if expired
                     now = datetime.now(timezone.utc)
                     if expires_at.tzinfo is None:
                         expires_at = expires_at.replace(tzinfo=timezone.utc)
@@ -206,7 +223,7 @@ class BillingService:
                 now = datetime.now(timezone.utc)
 
                 # Read current VIP expiry to support stacking for monthly/yearly.
-                cur.execute("SELECT vip_expires_at FROM qd_users WHERE id = ?", (user_id,))
+                cur.execute("SELECT vip_expires_at FROM ml_users WHERE id = ?", (user_id,))
                 row = cur.fetchone() or {}
                 current_expires = row.get("vip_expires_at")
                 if isinstance(current_expires, str) and current_expires:
@@ -238,7 +255,7 @@ class BillingService:
                 try:
                     cur.execute(
                         """
-                        INSERT INTO qd_membership_orders
+                        INSERT INTO ml_membership_orders
                           (user_id, plan, price_usd, status, created_at, paid_at)
                         VALUES (?, ?, ?, 'paid', NOW(), NOW())
                         RETURNING id
@@ -251,7 +268,7 @@ class BillingService:
                     # Fallback for DB drivers without RETURNING support
                     cur.execute(
                         """
-                        INSERT INTO qd_membership_orders
+                        INSERT INTO ml_membership_orders
                           (user_id, plan, price_usd, status, created_at, paid_at)
                         VALUES (?, ?, ?, 'paid', NOW(), NOW())
                         """,
@@ -263,7 +280,7 @@ class BillingService:
                 # Update user VIP fields
                 cur.execute(
                     """
-                    UPDATE qd_users
+                    UPDATE ml_users
                     SET vip_expires_at = ?,
                         vip_plan = ?,
                         vip_is_lifetime = ?,
@@ -289,7 +306,7 @@ class BillingService:
                                                 remark="Lifetime membership monthly credits", reference_id=order_ref)
                     try:
                         cur.execute(
-                            "UPDATE qd_users SET vip_monthly_credits_last_grant = ?, updated_at = NOW() WHERE id = ?",
+                            "UPDATE ml_users SET vip_monthly_credits_last_grant = ?, updated_at = NOW() WHERE id = ?",
                             (now, user_id),
                         )
                     except Exception:
@@ -299,10 +316,10 @@ class BillingService:
                 # VIP log entry (for audit)
                 cur.execute(
                     """
-                    INSERT INTO qd_credits_log
+                    INSERT INTO ml_credits_log
                       (user_id, action, amount, balance_after, remark, operator_id, reference_id, created_at)
                     VALUES (?, 'membership_purchase', 0,
-                            (SELECT credits FROM qd_users WHERE id = ?),
+                            (SELECT credits FROM ml_users WHERE id = ?),
                             ?, NULL, ?, NOW())
                     """,
                     (user_id, user_id, f"Membership purchased: {plan}", order_ref),
@@ -321,12 +338,12 @@ class BillingService:
             return False, f"error:{str(e)}", {}
 
     def _ensure_membership_schema_best_effort(self, cur):
-        """Best-effort schema upgrade for membership fields on qd_users."""
+        """Best-effort schema upgrade for membership fields on ml_users."""
         try:
             # vip_plan / vip_is_lifetime / vip_monthly_credits_last_grant
-            cur.execute("ALTER TABLE qd_users ADD COLUMN IF NOT EXISTS vip_plan VARCHAR(20) DEFAULT ''")
-            cur.execute("ALTER TABLE qd_users ADD COLUMN IF NOT EXISTS vip_is_lifetime BOOLEAN DEFAULT FALSE")
-            cur.execute("ALTER TABLE qd_users ADD COLUMN IF NOT EXISTS vip_monthly_credits_last_grant TIMESTAMP")
+            cur.execute("ALTER TABLE ml_users ADD COLUMN IF NOT EXISTS vip_plan VARCHAR(20) DEFAULT ''")
+            cur.execute("ALTER TABLE ml_users ADD COLUMN IF NOT EXISTS vip_is_lifetime BOOLEAN DEFAULT FALSE")
+            cur.execute("ALTER TABLE ml_users ADD COLUMN IF NOT EXISTS vip_monthly_credits_last_grant TIMESTAMP")
         except Exception:
             # Ignore schema upgrade failures (e.g., insufficient privileges)
             pass
@@ -336,7 +353,7 @@ class BillingService:
         try:
             cur.execute(
                 """
-                CREATE TABLE IF NOT EXISTS qd_membership_orders (
+                CREATE TABLE IF NOT EXISTS ml_membership_orders (
                   id SERIAL PRIMARY KEY,
                   user_id INTEGER NOT NULL,
                   plan VARCHAR(20) NOT NULL,
@@ -351,17 +368,17 @@ class BillingService:
             pass
 
     def _add_credits_in_tx(self, cur, user_id: int, amount: int, action: str, remark: str, reference_id: str = ''):
-        """Add credits within an existing DB transaction and write qd_credits_log."""
+        """Add credits within an existing DB transaction and write ml_credits_log."""
         try:
-            cur.execute("SELECT credits FROM qd_users WHERE id = ?", (user_id,))
+            cur.execute("SELECT credits FROM ml_users WHERE id = ?", (user_id,))
             row = cur.fetchone() or {}
             credits = Decimal(str(row.get("credits", 0) or 0))
             new_balance = credits + Decimal(str(amount))
 
-            cur.execute("UPDATE qd_users SET credits = ?, updated_at = NOW() WHERE id = ?", (float(new_balance), user_id))
+            cur.execute("UPDATE ml_users SET credits = ?, updated_at = NOW() WHERE id = ?", (float(new_balance), user_id))
             cur.execute(
                 """
-                INSERT INTO qd_credits_log
+                INSERT INTO ml_credits_log
                   (user_id, action, amount, balance_after, remark, operator_id, reference_id, created_at)
                 VALUES (?, ?, ?, ?, ?, NULL, ?, NOW())
                 """,
@@ -379,7 +396,7 @@ class BillingService:
                 return
 
             cur.execute(
-                "SELECT vip_is_lifetime, vip_expires_at, vip_monthly_credits_last_grant FROM qd_users WHERE id = ?",
+                "SELECT vip_is_lifetime, vip_expires_at, vip_monthly_credits_last_grant FROM ml_users WHERE id = ?",
                 (user_id,),
             )
             row = cur.fetchone() or {}
@@ -410,7 +427,7 @@ class BillingService:
             # First time: do nothing (purchase flow already grants), but set last to now if missing
             if not last:
                 cur.execute(
-                    "UPDATE qd_users SET vip_monthly_credits_last_grant = ?, updated_at = NOW() WHERE id = ?",
+                    "UPDATE ml_users SET vip_monthly_credits_last_grant = ?, updated_at = NOW() WHERE id = ?",
                     (now, user_id),
                 )
                 return
@@ -427,7 +444,7 @@ class BillingService:
             self._add_credits_in_tx(cur, user_id, total, action="membership_monthly",
                                     remark=f"Lifetime membership monthly credits x{periods}", reference_id="")
             cur.execute(
-                "UPDATE qd_users SET vip_monthly_credits_last_grant = ?, updated_at = NOW() WHERE id = ?",
+                "UPDATE ml_users SET vip_monthly_credits_last_grant = ?, updated_at = NOW() WHERE id = ?",
                 (now, user_id),
             )
         except Exception:
@@ -435,32 +452,57 @@ class BillingService:
             pass
     
     def check_and_consume(self, user_id: int, feature: str, reference_id: str = '') -> Tuple[bool, str]:
-        """Check and consume credits for a feature. Returns (success, message)."""
+        """
+        Check and consume credits
+
+        Args:
+            user_id: User ID
+            feature: Feature name (ai_analysis/strategy_run/backtest/portfolio_monitor, etc.)
+            reference_id: Associated ID (optional)
+
+        Returns:
+            (success, message): Whether successful, status message
+        """
+        # Check if billing is enabled
         if not self.is_billing_enabled():
             return True, 'billing_disabled'
+        
         config = self.get_billing_config()
         cost = self.get_feature_cost(feature)
+        
+        # Free feature
         if cost <= 0:
             return True, 'free_feature'
+        
+        # Check VIP status
         if config.get('vip_bypass', True):
             is_vip, _ = self.get_user_vip_status(user_id)
             if is_vip:
                 return True, 'vip_free'
+        
+        # Check credit balance
         credits = self.get_user_credits(user_id)
         if credits < cost:
             return False, f'insufficient_credits:{credits}:{cost}'
+        
+        # Deduct credits
         try:
             new_balance = credits - Decimal(str(cost))
+            
             with get_db_connection() as db:
                 cur = db.cursor()
+                
+                # Update user credits
                 cur.execute(
-                    "UPDATE qd_users SET credits = ?, updated_at = NOW() WHERE id = ?",
+                    "UPDATE ml_users SET credits = ?, updated_at = NOW() WHERE id = ?",
                     (float(new_balance), user_id)
                 )
+
+                # Record log
                 feature_name = FEATURE_NAMES.get(feature, feature)
                 cur.execute(
                     """
-                    INSERT INTO qd_credits_log 
+                    INSERT INTO ml_credits_log 
                     (user_id, action, amount, balance_after, feature, reference_id, remark, created_at)
                     VALUES (?, 'consume', ?, ?, ?, ?, ?, NOW())
                     """,
@@ -477,9 +519,22 @@ class BillingService:
             logger.error(f"check_and_consume failed: {e}")
             return False, f'error:{str(e)}'
     
-    def add_credits(self, user_id: int, amount: int, action: str = 'recharge',
+    def add_credits(self, user_id: int, amount: int, action: str = 'recharge', 
                     remark: str = '', operator_id: int = None, reference_id: str = '') -> Tuple[bool, str]:
-        """Add credits for user. Returns (success, message)."""
+        """
+        Add credits to a user
+
+        Args:
+            user_id: User ID
+            amount: Amount to add (positive number)
+            action: Operation type (recharge/admin_adjust/refund/referral_bonus/register_bonus)
+            remark: Remark
+            operator_id: Operator ID (for admin operations)
+            reference_id: Associated ID (e.g., invited user ID, order number, etc.)
+
+        Returns:
+            (success, message)
+        """
         if amount <= 0:
             return False, 'amount_must_be_positive'
         
@@ -489,13 +544,17 @@ class BillingService:
             
             with get_db_connection() as db:
                 cur = db.cursor()
+                
+                # Update user credits
                 cur.execute(
-                    "UPDATE qd_users SET credits = ?, updated_at = NOW() WHERE id = ?",
+                    "UPDATE ml_users SET credits = ?, updated_at = NOW() WHERE id = ?",
                     (float(new_balance), user_id)
                 )
+
+                # Record log (including reference_id)
                 cur.execute(
                     """
-                    INSERT INTO qd_credits_log 
+                    INSERT INTO ml_credits_log 
                     (user_id, action, amount, balance_after, remark, operator_id, reference_id, created_at)
                     VALUES (?, ?, ?, ?, ?, ?, ?, NOW())
                     """,
@@ -512,9 +571,20 @@ class BillingService:
             logger.error(f"add_credits failed: {e}")
             return False, str(e)
     
-    def set_credits(self, user_id: int, amount: int, remark: str = '',
+    def set_credits(self, user_id: int, amount: int, remark: str = '', 
                     operator_id: int = None) -> Tuple[bool, str]:
-        """Set user credits (admin). Returns (success, message)."""
+        """
+        Set user credits (admin direct set)
+
+        Args:
+            user_id: User ID
+            amount: Amount to set
+            remark: Remark
+            operator_id: Operator ID
+
+        Returns:
+            (success, message)
+        """
         if amount < 0:
             return False, 'amount_cannot_be_negative'
         
@@ -524,13 +594,17 @@ class BillingService:
             
             with get_db_connection() as db:
                 cur = db.cursor()
+                
+                # Update user credits
                 cur.execute(
-                    "UPDATE qd_users SET credits = ?, updated_at = NOW() WHERE id = ?",
+                    "UPDATE ml_users SET credits = ?, updated_at = NOW() WHERE id = ?",
                     (amount, user_id)
                 )
+
+                # Record log
                 cur.execute(
                     """
-                    INSERT INTO qd_credits_log 
+                    INSERT INTO ml_credits_log 
                     (user_id, action, amount, balance_after, remark, operator_id, created_at)
                     VALUES (?, 'admin_adjust', ?, ?, ?, ?, NOW())
                     """,
@@ -547,23 +621,38 @@ class BillingService:
             logger.error(f"set_credits failed: {e}")
             return False, str(e)
     
-    def set_vip(self, user_id: int, expires_at: Optional[datetime],
+    def set_vip(self, user_id: int, expires_at: Optional[datetime], 
                 remark: str = '', operator_id: int = None) -> Tuple[bool, str]:
-        """Set user VIP status (expires_at or None to revoke). Returns (success, message)."""
+        """
+        Set user VIP status
+
+        Args:
+            user_id: User ID
+            expires_at: VIP expiration time (None to revoke VIP)
+            remark: Remark
+            operator_id: Operator ID
+
+        Returns:
+            (success, message)
+        """
         try:
             with get_db_connection() as db:
                 cur = db.cursor()
+                
+                # Update VIP expiration time
                 cur.execute(
-                    "UPDATE qd_users SET vip_expires_at = ?, updated_at = NOW() WHERE id = ?",
+                    "UPDATE ml_users SET vip_expires_at = ?, updated_at = NOW() WHERE id = ?",
                     (expires_at, user_id)
                 )
+                
+                # Record log
                 action = 'vip_grant' if expires_at else 'vip_revoke'
                 log_remark = remark or (f'VIP granted until {expires_at}' if expires_at else 'VIP revoked')
                 cur.execute(
                     """
-                    INSERT INTO qd_credits_log 
+                    INSERT INTO ml_credits_log 
                     (user_id, action, amount, balance_after, remark, operator_id, created_at)
-                    VALUES (?, ?, 0, (SELECT credits FROM qd_users WHERE id = ?), ?, ?, NOW())
+                    VALUES (?, ?, 0, (SELECT credits FROM ml_users WHERE id = ?), ?, ?, NOW())
                     """,
                     (user_id, action, user_id, log_remark, operator_id)
                 )
@@ -579,20 +668,25 @@ class BillingService:
             return False, str(e)
     
     def get_credits_log(self, user_id: int, page: int = 1, page_size: int = 20) -> Dict[str, Any]:
-        """Get user credits change log (paginated)."""
+        """Get user credit change log"""
         offset = (page - 1) * page_size
+        
         try:
             with get_db_connection() as db:
                 cur = db.cursor()
+                
+                # Get total count
                 cur.execute(
-                    "SELECT COUNT(*) as count FROM qd_credits_log WHERE user_id = ?",
+                    "SELECT COUNT(*) as count FROM ml_credits_log WHERE user_id = ?",
                     (user_id,)
                 )
                 total = cur.fetchone()['count']
+                
+                # Get log entries
                 cur.execute(
                     """
                     SELECT id, action, amount, balance_after, feature, reference_id, remark, created_at
-                    FROM qd_credits_log
+                    FROM ml_credits_log
                     WHERE user_id = ?
                     ORDER BY created_at DESC
                     LIMIT ? OFFSET ?
@@ -614,17 +708,20 @@ class BillingService:
             return {'items': [], 'total': 0, 'page': 1, 'page_size': page_size, 'total_pages': 0}
     
     def get_user_billing_info(self, user_id: int) -> Dict[str, Any]:
-        """Get user billing info for frontend."""
+        """Get user billing info (for frontend display)"""
         credits = self.get_user_credits(user_id)
         is_vip, vip_expires_at = self.get_user_vip_status(user_id)
         config = self.get_billing_config()
+        
         return {
             'credits': float(credits),
             'is_vip': is_vip,
             'vip_expires_at': vip_expires_at.isoformat() if vip_expires_at else None,
             'billing_enabled': config.get('enabled', False),
             'vip_bypass': config.get('vip_bypass', False),
+            # Public support link for credits recharge / VIP purchase
             'recharge_telegram_url': os.getenv('RECHARGE_TELEGRAM_URL', '').strip() or 'https://t.me/your_support_bot',
+            # Feature costs (for frontend display)
             'feature_costs': {
                 'ai_analysis': config.get('cost_ai_analysis', 0),
                 'strategy_run': config.get('cost_strategy_run', 0),
@@ -634,11 +731,12 @@ class BillingService:
         }
 
 
+# Global singleton
 _billing_service = None
 
 
 def get_billing_service() -> BillingService:
-    """Get billing service singleton."""
+    """Get billing service singleton"""
     global _billing_service
     if _billing_service is None:
         _billing_service = BillingService()

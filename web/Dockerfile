@@ -1,32 +1,32 @@
-# Zing Web — Next.js (optional: use for Railway Docker deploy)
-FROM node:20-alpine AS base
+# MarketLabs Frontend Dockerfile
+# Stage 1: Build
+FROM node:18-alpine as builder
 
-# Dependencies
-FROM base AS deps
 WORKDIR /app
-COPY package.json package-lock.json* ./
-RUN npm ci
 
-# Builder
-FROM base AS builder
-WORKDIR /app
-COPY --from=deps /app/node_modules ./node_modules
+# Copy package files
+COPY package*.json ./
+
+# Install dependencies (prefer npm)
+RUN npm install --legacy-peer-deps
+
+# Copy source code
 COPY . .
-# NEXT_PUBLIC_* must be present at build time
-ARG NEXT_PUBLIC_API_URL=http://localhost:5000
-ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
+
+# Build production version
 RUN npm run build
 
-# Runner
-FROM base AS runner
-WORKDIR /app
-ENV NODE_ENV=production
-RUN addgroup --system --gid 1001 nodejs && adduser --system --uid 1001 nextjs
-COPY --from=builder /app/public ./public
-COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
-COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
-USER nextjs
-EXPOSE 3000
-ENV PORT=3000
-ENV HOSTNAME="0.0.0.0"
-CMD ["node", "server.js"]
+# Stage 2: Production image (using nginx)
+# Use specific version to avoid mirror registry issues
+FROM nginx:1.25-alpine
+
+# Copy build artifacts
+COPY --from=builder /app/dist /usr/share/nginx/html
+
+# Copy nginx configuration
+COPY deploy/nginx-docker.conf /etc/nginx/conf.d/default.conf
+
+# Expose port
+EXPOSE 80
+
+CMD ["nginx", "-g", "daemon off;"]

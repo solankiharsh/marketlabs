@@ -26,7 +26,7 @@ class StrategyService:
         try:
             with get_db_connection() as db:
                 cursor = db.cursor()
-                query = "SELECT id FROM qd_strategies_trading WHERE status = 'running'"
+                query = "SELECT id FROM ml_strategies_trading WHERE status = 'running'"
                 cursor.execute(query)
                 results = cursor.fetchall()
                 cursor.close()
@@ -40,10 +40,10 @@ class StrategyService:
         try:
             with get_db_connection() as db:
                 cursor = db.cursor()
-                # Assume qd_strategies_trading table has strategy_type field
+                # Assume ml_strategies_trading table has strategy_type field
                 # If not, may need join query or determine from other fields
                 # Here we assume table structure is updated
-                query = "SELECT id, strategy_type FROM qd_strategies_trading WHERE status = 'running'"
+                query = "SELECT id, strategy_type FROM ml_strategies_trading WHERE status = 'running'"
                 cursor.execute(query)
                 results = cursor.fetchall()
                 cursor.close()
@@ -421,7 +421,7 @@ class StrategyService:
             with get_db_connection() as db:
                 cur = db.cursor()
                 cur.execute(
-                    "SELECT strategy_type FROM qd_strategies_trading WHERE id = ?",
+                    "SELECT strategy_type FROM ml_strategies_trading WHERE id = ?",
                     (strategy_id,)
                 )
                 row = cur.fetchone()
@@ -437,12 +437,12 @@ class StrategyService:
                 cur = db.cursor()
                 if user_id is not None:
                     cur.execute(
-                        "UPDATE qd_strategies_trading SET status = ?, updated_at = NOW() WHERE id = ? AND user_id = ?",
+                        "UPDATE ml_strategies_trading SET status = ?, updated_at = NOW() WHERE id = ? AND user_id = ?",
                         (status, strategy_id, user_id)
                     )
                 else:
                     cur.execute(
-                        "UPDATE qd_strategies_trading SET status = ?, updated_at = NOW() WHERE id = ?",
+                        "UPDATE ml_strategies_trading SET status = ?, updated_at = NOW() WHERE id = ?",
                         (status, strategy_id)
                     )
                 db.commit()
@@ -482,7 +482,7 @@ class StrategyService:
                 cur.execute(
                     """
                     SELECT *
-                    FROM qd_strategies_trading
+                    FROM ml_strategies_trading
                     WHERE user_id = ?
                     ORDER BY id DESC
                     """,
@@ -517,9 +517,9 @@ class StrategyService:
             with get_db_connection() as db:
                 cur = db.cursor()
                 if user_id is not None:
-                    cur.execute("SELECT * FROM qd_strategies_trading WHERE id = ? AND user_id = ?", (strategy_id, user_id))
+                    cur.execute("SELECT * FROM ml_strategies_trading WHERE id = ? AND user_id = ?", (strategy_id, user_id))
                 else:
-                    cur.execute("SELECT * FROM qd_strategies_trading WHERE id = ?", (strategy_id,))
+                    cur.execute("SELECT * FROM ml_strategies_trading WHERE id = ?", (strategy_id,))
                 r = cur.fetchone()
                 cur.close()
             if not r:
@@ -548,12 +548,6 @@ class StrategyService:
         indicator_config = payload.get('indicator_config') or {}
         trading_config = payload.get('trading_config') or {}
         exchange_config = payload.get('exchange_config') or {}
-
-        # When credential_id is present, strip raw API keys to avoid
-        # storing secrets in the strategy record — they live in qd_exchange_credentials.
-        if isinstance(exchange_config, dict) and exchange_config.get('credential_id'):
-            for _secret_key in ('api_key', 'secret_key', 'passphrase', 'apiKey', 'secret', 'password'):
-                exchange_config.pop(_secret_key, None)
 
         # Strategy group fields
         strategy_group_id = payload.get('strategy_group_id') or ''
@@ -585,7 +579,7 @@ class StrategyService:
             cur = db.cursor()
             cur.execute(
                 """
-                INSERT INTO qd_strategies_trading
+                INSERT INTO ml_strategies_trading
                 (user_id, strategy_name, strategy_type, market_category, execution_mode, notification_config,
                  status, symbol, timeframe, initial_capital, leverage, market_type,
                  exchange_config, indicator_config, trading_config, ai_model_config, decide_interval,
@@ -755,12 +749,12 @@ class StrategyService:
                 cur = db.cursor()
                 if user_id is not None:
                     cur.execute(
-                        "SELECT id FROM qd_strategies_trading WHERE strategy_group_id = ? AND user_id = ?",
+                        "SELECT id FROM ml_strategies_trading WHERE strategy_group_id = ? AND user_id = ?",
                         (strategy_group_id, user_id)
                     )
                 else:
                     cur.execute(
-                        "SELECT id FROM qd_strategies_trading WHERE strategy_group_id = ?",
+                        "SELECT id FROM ml_strategies_trading WHERE strategy_group_id = ?",
                         (strategy_group_id,)
                     )
                 rows = cur.fetchall() or []
@@ -785,13 +779,7 @@ class StrategyService:
         trading_config = payload.get('trading_config') if payload.get('trading_config') is not None else (existing.get('trading_config') or {})
         exchange_config = payload.get('exchange_config') if payload.get('exchange_config') is not None else (existing.get('exchange_config') or {})
         ai_model_config = payload.get('ai_model_config') if payload.get('ai_model_config') is not None else (existing.get('ai_model_config') or {})
-
-        # When credential_id is present, strip raw API keys to avoid
-        # storing secrets in the strategy record — they live in qd_exchange_credentials.
-        if isinstance(exchange_config, dict) and exchange_config.get('credential_id'):
-            for _secret_key in ('api_key', 'secret_key', 'passphrase', 'apiKey', 'secret', 'password'):
-                exchange_config.pop(_secret_key, None)
-
+        
         # Handle cross-sectional strategy config updates
         if payload.get('cs_strategy_type') is not None:
             trading_config['cs_strategy_type'] = payload.get('cs_strategy_type')
@@ -814,7 +802,7 @@ class StrategyService:
             cur = db.cursor()
             cur.execute(
                 """
-                UPDATE qd_strategies_trading
+                UPDATE ml_strategies_trading
                 SET strategy_name = ?,
                     market_category = ?,
                     execution_mode = ?,
@@ -858,9 +846,9 @@ class StrategyService:
             with get_db_connection() as db:
                 cur = db.cursor()
                 if user_id is not None:
-                    cur.execute("DELETE FROM qd_strategies_trading WHERE id = ? AND user_id = ?", (strategy_id, user_id))
+                    cur.execute("DELETE FROM ml_strategies_trading WHERE id = ? AND user_id = ?", (strategy_id, user_id))
                 else:
-                    cur.execute("DELETE FROM qd_strategies_trading WHERE id = ?", (strategy_id,))
+                    cur.execute("DELETE FROM ml_strategies_trading WHERE id = ?", (strategy_id,))
                 db.commit()
                 cur.close()
             return True
