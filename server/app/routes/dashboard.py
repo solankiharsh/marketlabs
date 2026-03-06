@@ -280,7 +280,7 @@ def summary():
                 """
                 SELECT id, strategy_name, strategy_type, status, initial_capital, trading_config
                 FROM ml_strategies_trading
-                WHERE user_id = ?
+                WHERE user_id = %s
                 """,
                 (user_id,)
             )
@@ -315,7 +315,7 @@ def summary():
                 SELECT p.*, s.strategy_name, s.initial_capital, s.leverage, s.market_type
                 FROM ml_strategy_positions p
                 LEFT JOIN ml_strategies_trading s ON s.id = p.strategy_id
-                WHERE p.user_id = ?
+                WHERE p.user_id = %s
                 ORDER BY p.updated_at DESC
                 """,
                 (user_id,)
@@ -357,7 +357,7 @@ def summary():
                 SELECT t.*, s.strategy_name
                 FROM ml_strategy_trades t
                 LEFT JOIN ml_strategies_trading s ON s.id = t.strategy_id
-                WHERE t.user_id = ?
+                WHERE t.user_id = %s
                 ORDER BY t.created_at DESC
                 LIMIT 500
                 """,
@@ -537,7 +537,7 @@ def pending_orders():
 
         with get_db_connection() as db:
             cur = db.cursor()
-            cur.execute("SELECT COUNT(1) AS cnt FROM pending_orders WHERE user_id = ?", (user_id,))
+            cur.execute("SELECT COUNT(1) AS cnt FROM pending_orders WHERE user_id = %s", (user_id,))
             total = int((cur.fetchone() or {}).get("cnt") or 0)
             cur.close()
 
@@ -554,9 +554,9 @@ def pending_orders():
                        s.execution_mode AS strategy_execution_mode
                 FROM pending_orders o
                 LEFT JOIN ml_strategies_trading s ON s.id = o.strategy_id
-                WHERE o.user_id = ?
+                WHERE o.user_id = %s
                 ORDER BY o.id DESC
-                LIMIT ? OFFSET ?
+                LIMIT %s OFFSET %s
                 """,
                 (user_id, int(page_size), int(offset)),
             )
@@ -657,7 +657,7 @@ def delete_pending_order(order_id: int):
         with get_db_connection() as db:
             cur = db.cursor()
             # Verify the order belongs to current user
-            cur.execute("SELECT id, status FROM pending_orders WHERE id = ? AND user_id = ?", (oid, user_id))
+            cur.execute("SELECT id, status FROM pending_orders WHERE id = %s AND user_id = %s", (oid, user_id))
             row = cur.fetchone() or {}
             if not row:
                 cur.close()
@@ -666,7 +666,7 @@ def delete_pending_order(order_id: int):
             if st == "processing":
                 cur.close()
                 return jsonify({"code": 0, "msg": "cannot_delete_processing", "data": None}), 400
-            cur.execute("DELETE FROM pending_orders WHERE id = ? AND user_id = ?", (oid, user_id))
+            cur.execute("DELETE FROM pending_orders WHERE id = %s AND user_id = %s", (oid, user_id))
             db.commit()
             cur.close()
 

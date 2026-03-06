@@ -55,7 +55,7 @@ class CommunityService:
                 params = []
                 
                 if keyword and keyword.strip():
-                    where_clauses.append("(i.name ILIKE ? OR i.description ILIKE ?)")
+                    where_clauses.append("(i.name ILIKE %s OR i.description ILIKE %s)")
                     search_term = f"%{keyword.strip()}%"
                     params.extend([search_term, search_term])
                 
@@ -97,7 +97,7 @@ class CommunityService:
                     LEFT JOIN ml_users u ON i.user_id = u.id
                     WHERE {where_sql}
                     ORDER BY {order_sql}
-                    LIMIT ? OFFSET ?
+                    LIMIT %s OFFSET %s
                 """
                 cur.execute(query_sql, tuple(params + [page_size, offset]))
                 rows = cur.fetchall() or []
@@ -107,9 +107,9 @@ class CommunityService:
                 if user_id:
                     indicator_ids = [r['id'] for r in rows]
                     if indicator_ids:
-                        placeholders = ','.join(['?'] * len(indicator_ids))
+                        placeholders = ','.join(['%s'] * len(indicator_ids))
                         cur.execute(
-                            f"SELECT indicator_id FROM ml_indicator_purchases WHERE buyer_id = ? AND indicator_id IN ({placeholders})",
+                            f"SELECT indicator_id FROM ml_indicator_purchases WHERE buyer_id = %s AND indicator_id IN ({placeholders})",
                             tuple([user_id] + indicator_ids)
                         )
                         purchased_ids = {r['indicator_id'] for r in (cur.fetchall() or [])}
@@ -171,7 +171,7 @@ class CommunityService:
                         u.nickname as author_nickname, u.avatar as author_avatar
                     FROM ml_indicator_codes i
                     LEFT JOIN ml_users u ON i.user_id = u.id
-                    WHERE i.id = ?
+                    WHERE i.id = %s
                 """, (indicator_id,))
                 row = cur.fetchone()
                 
@@ -188,14 +188,14 @@ class CommunityService:
                 is_purchased = False
                 if user_id:
                     cur.execute(
-                        "SELECT id FROM ml_indicator_purchases WHERE indicator_id = ? AND buyer_id = ?",
+                        "SELECT id FROM ml_indicator_purchases WHERE indicator_id = %s AND buyer_id = %s",
                         (indicator_id, user_id)
                     )
                     is_purchased = cur.fetchone() is not None
                 
                 # Increment view count
                 cur.execute(
-                    "UPDATE ml_indicator_codes SET view_count = COALESCE(view_count, 0) + 1 WHERE id = ?",
+                    "UPDATE ml_indicator_codes SET view_count = COALESCE(view_count, 0) + 1 WHERE id = %s",
                     (indicator_id,)
                 )
                 db.commit()
@@ -249,7 +249,7 @@ class CommunityService:
                     SELECT id, user_id, name, code, description, pricing_type, price, COALESCE(vip_free, FALSE) as vip_free,
                            preview_image, is_encrypted
                     FROM ml_indicator_codes
-                    WHERE id = ? AND publish_to_community = 1
+                    WHERE id = %s AND publish_to_community = 1
                 """, (indicator_id,))
                 indicator = cur.fetchone()
                 
@@ -273,7 +273,7 @@ class CommunityService:
                 
                 # 3. Check if already purchased
                 cur.execute(
-                    "SELECT id FROM ml_indicator_purchases WHERE indicator_id = ? AND buyer_id = ?",
+                    "SELECT id FROM ml_indicator_purchases WHERE indicator_id = %s AND buyer_id = %s",
                     (indicator_id, buyer_id)
                 )
                 if cur.fetchone():
@@ -293,7 +293,7 @@ class CommunityService:
                     # Deduct buyer credits
                     new_buyer_balance = buyer_credits - Decimal(str(effective_price))
                     cur.execute(
-                        "UPDATE ml_users SET credits = ?, updated_at = NOW() WHERE id = ?",
+                        "UPDATE ml_users SET credits = %s, updated_at = NOW() WHERE id = %s",
                         (float(new_buyer_balance), buyer_id)
                     )
                     
@@ -301,7 +301,7 @@ class CommunityService:
                     cur.execute("""
                         INSERT INTO ml_credits_log 
                         (user_id, action, amount, balance_after, feature, reference_id, remark, created_at)
-                        VALUES (?, 'indicator_purchase', ?, ?, 'indicator_purchase', ?, ?, NOW())
+                        VALUES (%s, 'indicator_purchase', %s, %s, 'indicator_purchase', %s, %s, NOW())
                     """, (buyer_id, -effective_price, float(new_buyer_balance), str(indicator_id), 
                           f"Purchased indicator: {indicator['name']}"))
                     
@@ -309,7 +309,7 @@ class CommunityService:
                     seller_credits = self.billing.get_user_credits(seller_id)
                     new_seller_balance = seller_credits + Decimal(str(effective_price))
                     cur.execute(
-                        "UPDATE ml_users SET credits = ?, updated_at = NOW() WHERE id = ?",
+                        "UPDATE ml_users SET credits = %s, updated_at = NOW() WHERE id = %s",
                         (float(new_seller_balance), seller_id)
                     )
                     
@@ -317,7 +317,7 @@ class CommunityService:
                     cur.execute("""
                         INSERT INTO ml_credits_log 
                         (user_id, action, amount, balance_after, feature, reference_id, remark, created_at)
-                        VALUES (?, 'indicator_sale', ?, ?, 'indicator_sale', ?, ?, NOW())
+                        VALUES (%s, 'indicator_sale', %s, %s, 'indicator_sale', %s, %s, NOW())
                     """, (seller_id, effective_price, float(new_seller_balance), str(indicator_id),
                           f"Sold indicator: {indicator['name']}"))
                 
@@ -325,7 +325,7 @@ class CommunityService:
                 cur.execute("""
                     INSERT INTO ml_indicator_purchases 
                     (indicator_id, buyer_id, seller_id, price, created_at)
-                    VALUES (?, ?, ?, ?, NOW())
+                    VALUES (%s, %s, %s, %s, NOW())
                 """, (indicator_id, buyer_id, seller_id, effective_price))
                 
                 # 6. Copy indicator to buyer's account
@@ -335,7 +335,7 @@ class CommunityService:
                     (user_id, is_buy, end_time, name, code, description,
                      publish_to_community, pricing_type, price, is_encrypted, preview_image, vip_free,
                      createtime, updatetime, created_at, updated_at)
-                    VALUES (?, 1, 0, ?, ?, ?, 0, 'free', 0, ?, ?, 0, ?, ?, NOW(), NOW())
+                    VALUES (%s, 1, 0, %s, %s, %s, 0, 'free', 0, %s, %s, 0, %s, %s, NOW(), NOW())
                 """, (
                     buyer_id,
                     indicator['name'],
@@ -350,7 +350,7 @@ class CommunityService:
                 cur.execute("""
                     UPDATE ml_indicator_codes 
                     SET purchase_count = COALESCE(purchase_count, 0) + 1 
-                    WHERE id = ?
+                    WHERE id = %s
                 """, (indicator_id,))
                 
                 db.commit()
@@ -373,7 +373,7 @@ class CommunityService:
                 
                 # Get total count
                 cur.execute(
-                    "SELECT COUNT(*) as count FROM ml_indicator_purchases WHERE buyer_id = ?",
+                    "SELECT COUNT(*) as count FROM ml_indicator_purchases WHERE buyer_id = %s",
                     (user_id,)
                 )
                 total = cur.fetchone()['count']
@@ -387,9 +387,9 @@ class CommunityService:
                     FROM ml_indicator_purchases p
                     LEFT JOIN ml_indicator_codes i ON p.indicator_id = i.id
                     LEFT JOIN ml_users u ON p.seller_id = u.id
-                    WHERE p.buyer_id = ?
+                    WHERE p.buyer_id = %s
                     ORDER BY p.created_at DESC
-                    LIMIT ? OFFSET ?
+                    LIMIT %s OFFSET %s
                 """, (user_id, page_size, offset))
                 rows = cur.fetchall() or []
                 cur.close()
@@ -440,7 +440,7 @@ class CommunityService:
                 # Get total count (only count top-level comments)
                 cur.execute("""
                     SELECT COUNT(*) as count FROM ml_indicator_comments 
-                    WHERE indicator_id = ? AND parent_id IS NULL AND is_deleted = 0
+                    WHERE indicator_id = %s AND parent_id IS NULL AND is_deleted = 0
                 """, (indicator_id,))
                 total = cur.fetchone()['count']
                 
@@ -451,9 +451,9 @@ class CommunityService:
                         u.id as user_id, u.nickname, u.avatar
                     FROM ml_indicator_comments c
                     LEFT JOIN ml_users u ON c.user_id = u.id
-                    WHERE c.indicator_id = ? AND c.parent_id IS NULL AND c.is_deleted = 0
+                    WHERE c.indicator_id = %s AND c.parent_id IS NULL AND c.is_deleted = 0
                     ORDER BY c.created_at DESC
-                    LIMIT ? OFFSET ?
+                    LIMIT %s OFFSET %s
                 """, (indicator_id, page_size, offset))
                 rows = cur.fetchall() or []
                 cur.close()
@@ -504,7 +504,7 @@ class CommunityService:
                 
                 # Check if indicator exists
                 cur.execute(
-                    "SELECT id, user_id FROM ml_indicator_codes WHERE id = ? AND publish_to_community = 1",
+                    "SELECT id, user_id FROM ml_indicator_codes WHERE id = %s AND publish_to_community = 1",
                     (indicator_id,)
                 )
                 indicator = cur.fetchone()
@@ -519,7 +519,7 @@ class CommunityService:
                 
                 # Check if purchased (free indicators also need to be "acquired" before commenting)
                 cur.execute(
-                    "SELECT id FROM ml_indicator_purchases WHERE indicator_id = ? AND buyer_id = ?",
+                    "SELECT id FROM ml_indicator_purchases WHERE indicator_id = %s AND buyer_id = %s",
                     (indicator_id, user_id)
                 )
                 if not cur.fetchone():
@@ -528,7 +528,7 @@ class CommunityService:
                 
                 # Check if already commented
                 cur.execute(
-                    "SELECT id FROM ml_indicator_comments WHERE indicator_id = ? AND user_id = ? AND parent_id IS NULL",
+                    "SELECT id FROM ml_indicator_comments WHERE indicator_id = %s AND user_id = %s AND parent_id IS NULL",
                     (indicator_id, user_id)
                 )
                 if cur.fetchone():
@@ -539,7 +539,7 @@ class CommunityService:
                 cur.execute("""
                     INSERT INTO ml_indicator_comments 
                     (indicator_id, user_id, rating, content, created_at, updated_at)
-                    VALUES (?, ?, ?, ?, NOW(), NOW())
+                    VALUES (%s, %s, %s, %s, NOW(), NOW())
                 """, (indicator_id, user_id, rating, content))
                 comment_id = cur.lastrowid
                 
@@ -550,9 +550,9 @@ class CommunityService:
                         rating_count = COALESCE(rating_count, 0) + 1,
                         avg_rating = (
                             SELECT AVG(rating) FROM ml_indicator_comments 
-                            WHERE indicator_id = ? AND parent_id IS NULL AND is_deleted = 0
+                            WHERE indicator_id = %s AND parent_id IS NULL AND is_deleted = 0
                         )
-                    WHERE id = ?
+                    WHERE id = %s
                 """, (indicator_id, indicator_id))
                 
                 db.commit()
@@ -586,7 +586,7 @@ class CommunityService:
                 # Check if comment exists and belongs to current user
                 cur.execute("""
                     SELECT id, rating as old_rating FROM ml_indicator_comments 
-                    WHERE id = ? AND user_id = ? AND indicator_id = ? AND is_deleted = 0
+                    WHERE id = %s AND user_id = %s AND indicator_id = %s AND is_deleted = 0
                 """, (comment_id, user_id, indicator_id))
                 comment = cur.fetchone()
                 
@@ -599,8 +599,8 @@ class CommunityService:
                 # Update comment
                 cur.execute("""
                     UPDATE ml_indicator_comments 
-                    SET rating = ?, content = ?, updated_at = NOW()
-                    WHERE id = ?
+                    SET rating = %s, content = %s, updated_at = NOW()
+                    WHERE id = %s
                 """, (rating, content, comment_id))
                 
                 # If rating changed, update indicator's average rating
@@ -609,9 +609,9 @@ class CommunityService:
                         UPDATE ml_indicator_codes 
                         SET avg_rating = (
                             SELECT AVG(rating) FROM ml_indicator_comments 
-                            WHERE indicator_id = ? AND parent_id IS NULL AND is_deleted = 0
+                            WHERE indicator_id = %s AND parent_id IS NULL AND is_deleted = 0
                         )
-                        WHERE id = ?
+                        WHERE id = %s
                     """, (indicator_id, indicator_id))
                 
                 db.commit()
@@ -632,7 +632,7 @@ class CommunityService:
                 cur.execute("""
                     SELECT id, rating, content, created_at, updated_at
                     FROM ml_indicator_comments
-                    WHERE user_id = ? AND indicator_id = ? AND parent_id IS NULL AND is_deleted = 0
+                    WHERE user_id = %s AND indicator_id = %s AND parent_id IS NULL AND is_deleted = 0
                 """, (user_id, indicator_id))
                 row = cur.fetchone()
                 cur.close()
@@ -674,7 +674,7 @@ class CommunityService:
                 params = []
                 
                 if review_status and review_status != 'all':
-                    where_clauses.append("i.review_status = ?")
+                    where_clauses.append("i.review_status = %s")
                     params.append(review_status)
                 
                 where_sql = " AND ".join(where_clauses)
@@ -702,7 +702,7 @@ class CommunityService:
                     LEFT JOIN ml_users r ON i.reviewed_by = r.id
                     WHERE {where_sql}
                     ORDER BY i.created_at DESC
-                    LIMIT ? OFFSET ?
+                    LIMIT %s OFFSET %s
                 """
                 cur.execute(query_sql, tuple(params + [page_size, offset]))
                 rows = cur.fetchall() or []
@@ -761,7 +761,7 @@ class CommunityService:
                 # Check if indicator exists and is published to community
                 cur.execute("""
                     SELECT id, name, user_id FROM ml_indicator_codes 
-                    WHERE id = ? AND publish_to_community = 1
+                    WHERE id = %s AND publish_to_community = 1
                 """, (indicator_id,))
                 indicator = cur.fetchone()
                 
@@ -772,8 +772,8 @@ class CommunityService:
                 # Update review status
                 cur.execute("""
                     UPDATE ml_indicator_codes 
-                    SET review_status = ?, review_note = ?, reviewed_at = NOW(), reviewed_by = ?
-                    WHERE id = ?
+                    SET review_status = %s, review_note = %s, reviewed_at = NOW(), reviewed_by = %s
+                    WHERE id = %s
                 """, (new_status, note, admin_id, indicator_id))
                 
                 db.commit()
@@ -796,7 +796,7 @@ class CommunityService:
                 
                 # Check if indicator exists
                 cur.execute("""
-                    SELECT id, name FROM ml_indicator_codes WHERE id = ?
+                    SELECT id, name FROM ml_indicator_codes WHERE id = %s
                 """, (indicator_id,))
                 indicator = cur.fetchone()
 
@@ -808,8 +808,8 @@ class CommunityService:
                 cur.execute("""
                     UPDATE ml_indicator_codes 
                     SET publish_to_community = 0, review_status = 'rejected',
-                        review_note = ?, reviewed_at = NOW(), reviewed_by = ?
-                    WHERE id = ?
+                        review_note = %s, reviewed_at = NOW(), reviewed_by = %s
+                    WHERE id = %s
                 """, (f"Unpublished: {note}" if note else "Unpublished by admin", admin_id, indicator_id))
                 
                 db.commit()
@@ -829,7 +829,7 @@ class CommunityService:
                 cur = db.cursor()
                 
                 # Check if indicator exists
-                cur.execute("SELECT id, name FROM ml_indicator_codes WHERE id = ?", (indicator_id,))
+                cur.execute("SELECT id, name FROM ml_indicator_codes WHERE id = %s", (indicator_id,))
                 indicator = cur.fetchone()
                 
                 if not indicator:
@@ -837,13 +837,13 @@ class CommunityService:
                     return False, 'indicator_not_found'
                 
                 # Delete associated comments
-                cur.execute("DELETE FROM ml_indicator_comments WHERE indicator_id = ?", (indicator_id,))
+                cur.execute("DELETE FROM ml_indicator_comments WHERE indicator_id = %s", (indicator_id,))
                 
                 # Delete associated purchase records
-                cur.execute("DELETE FROM ml_indicator_purchases WHERE indicator_id = ?", (indicator_id,))
+                cur.execute("DELETE FROM ml_indicator_purchases WHERE indicator_id = %s", (indicator_id,))
                 
                 # Delete indicator
-                cur.execute("DELETE FROM ml_indicator_codes WHERE id = ?", (indicator_id,))
+                cur.execute("DELETE FROM ml_indicator_codes WHERE id = %s", (indicator_id,))
                 
                 db.commit()
                 cur.close()

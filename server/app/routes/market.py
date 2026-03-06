@@ -192,7 +192,7 @@ def get_watchlist():
         with get_db_connection() as db:
             cur = db.cursor()
             cur.execute(
-                "SELECT id, market, symbol, name FROM ml_watchlist WHERE user_id = ? ORDER BY id DESC",
+                "SELECT id, market, symbol, name FROM ml_watchlist WHERE user_id = %s ORDER BY id DESC",
                 (user_id,)
             )
             rows = cur.fetchall() or []
@@ -212,7 +212,7 @@ def get_watchlist():
                     if resolved and resolved != current_name:
                         row['name'] = resolved
                         cur.execute(
-                            "UPDATE ml_watchlist SET name = ?, updated_at = NOW() WHERE user_id = ? AND market = ? AND symbol = ?",
+                            "UPDATE ml_watchlist SET name = %s, updated_at = NOW() WHERE user_id = %s AND market = %s AND symbol = %s",
                             (resolved, user_id, market, symbol)
                         )
                 except Exception:
@@ -248,7 +248,7 @@ def add_watchlist():
             cur.execute(
                 """
                 INSERT INTO ml_watchlist (user_id, market, symbol, name, created_at, updated_at) 
-                VALUES (?, ?, ?, ?, NOW(), NOW())
+                VALUES (%s, %s, %s, %s, NOW(), NOW())
                 ON CONFLICT(user_id, market, symbol) DO UPDATE SET
                     name = excluded.name,
                     updated_at = NOW()
@@ -278,7 +278,7 @@ def remove_watchlist():
         with get_db_connection() as db:
             cur = db.cursor()
             cur.execute(
-                "DELETE FROM ml_watchlist WHERE user_id = ? AND symbol = ?",
+                "DELETE FROM ml_watchlist WHERE user_id = %s AND symbol = %s",
                 (user_id, symbol)
             )
             db.commit()

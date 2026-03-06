@@ -397,7 +397,7 @@ def login_with_code():
             with get_db_connection() as db:
                 cur = db.cursor()
                 cur.execute(
-                    "UPDATE ml_users SET last_login_at = NOW() WHERE id = ?",
+                    "UPDATE ml_users SET last_login_at = NOW() WHERE id = %s",
                     (user['id'],)
                 )
                 db.commit()

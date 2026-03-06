@@ -127,7 +127,7 @@ class SecurityService:
                     """
                     INSERT INTO ml_login_attempts 
                     (identifier, identifier_type, success, ip_address, user_agent)
-                    VALUES (?, ?, ?, ?, ?)
+                    VALUES (%s, %s, %s, %s, %s)
                     """,
                     (identifier, identifier_type, success, ip_address, user_agent)
                 )
@@ -164,8 +164,8 @@ class SecurityService:
                     """
                     SELECT COUNT(*) as count, MAX(attempt_time) as last_attempt
                     FROM ml_login_attempts
-                    WHERE identifier = ? AND identifier_type = ? 
-                    AND success = FALSE AND attempt_time > ?
+                    WHERE identifier = %s AND identifier_type = %s 
+                    AND success = FALSE AND attempt_time > %s
                     """,
                     (identifier, identifier_type, window_start)
                 )
@@ -223,7 +223,7 @@ class SecurityService:
                 cur.execute(
                     """
                     DELETE FROM ml_login_attempts
-                    WHERE identifier = ? AND identifier_type = ?
+                    WHERE identifier = %s AND identifier_type = %s
                     """,
                     (identifier, identifier_type)
                 )
@@ -260,7 +260,7 @@ class SecurityService:
                     """
                     INSERT INTO ml_security_logs 
                     (user_id, action, ip_address, user_agent, details)
-                    VALUES (?, ?, ?, ?, ?)
+                    VALUES (%s, %s, %s, %s, %s)
                     """,
                     (user_id, action, ip_address, user_agent, details_json)
                 )
@@ -291,7 +291,7 @@ class SecurityService:
                 cur.execute(
                     """
                     SELECT COUNT(*) as count FROM ml_verification_codes
-                    WHERE email = ? AND created_at > ?
+                    WHERE email = %s AND created_at > %s
                     """,
                     (email, rate_limit_time)
                 )
@@ -304,7 +304,7 @@ class SecurityService:
                 cur.execute(
                     """
                     SELECT COUNT(*) as count FROM ml_verification_codes
-                    WHERE ip_address = ? AND created_at > ?
+                    WHERE ip_address = %s AND created_at > %s
                     """,
                     (ip_address, hour_ago)
                 )
@@ -370,14 +370,14 @@ class SecurityService:
                 
                 # Clean old login attempts
                 cur.execute(
-                    "DELETE FROM ml_login_attempts WHERE attempt_time < ?",
+                    "DELETE FROM ml_login_attempts WHERE attempt_time < %s",
                     (cutoff,)
                 )
                 deleted += cur.rowcount or 0
                 
                 # Clean expired verification codes
                 cur.execute(
-                    "DELETE FROM ml_verification_codes WHERE expires_at < ?",
+                    "DELETE FROM ml_verification_codes WHERE expires_at < %s",
                     (cutoff,)
                 )
                 deleted += cur.rowcount or 0

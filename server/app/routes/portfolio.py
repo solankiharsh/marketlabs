@@ -113,7 +113,7 @@ def get_positions():
                 """
                 SELECT id, market, symbol, name, side, quantity, entry_price, entry_time, notes, tags, group_name, created_at, updated_at
                 FROM ml_manual_positions
-                WHERE user_id = ?
+                WHERE user_id = %s
                 ORDER BY id DESC
                 """,
                 (user_id,)
@@ -245,7 +245,7 @@ def add_position():
                 """
                 INSERT INTO ml_manual_positions 
                 (user_id, market, symbol, name, side, quantity, entry_price, entry_time, notes, tags, group_name, created_at, updated_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, NOW(), NOW())
                 ON CONFLICT(user_id, market, symbol, side, group_name) DO UPDATE SET
                     name = excluded.name,
                     quantity = excluded.quantity,
@@ -281,38 +281,38 @@ def update_position(position_id):
         params = []
         
         if 'name' in data:
-            updates.append('name = ?')
+            updates.append('name = %s')
             params.append((data.get('name') or '').strip())
         
         if 'quantity' in data:
             quantity = float(data.get('quantity') or 0)
             if quantity <= 0:
                 return jsonify({'code': 0, 'msg': 'Quantity must be positive', 'data': None}), 400
-            updates.append('quantity = ?')
+            updates.append('quantity = %s')
             params.append(quantity)
         
         if 'entry_price' in data:
             entry_price = float(data.get('entry_price') or 0)
             if entry_price <= 0:
                 return jsonify({'code': 0, 'msg': 'Entry price must be positive', 'data': None}), 400
-            updates.append('entry_price = ?')
+            updates.append('entry_price = %s')
             params.append(entry_price)
         
         if 'entry_time' in data:
-            updates.append('entry_time = ?')
+            updates.append('entry_time = %s')
             params.append(data.get('entry_time'))
         
         if 'notes' in data:
-            updates.append('notes = ?')
+            updates.append('notes = %s')
             params.append((data.get('notes') or '').strip())
         
         if 'tags' in data:
             tags = data.get('tags') or []
-            updates.append('tags = ?')
+            updates.append('tags = %s')
             params.append(json.dumps(tags if isinstance(tags, list) else [], ensure_ascii=False))
         
         if 'group_name' in data:
-            updates.append('group_name = ?')
+            updates.append('group_name = %s')
             params.append((data.get('group_name') or '').strip())
         
         if not updates:
@@ -325,7 +325,7 @@ def update_position(position_id):
         with get_db_connection() as db:
             cur = db.cursor()
             cur.execute(
-                f"UPDATE ml_manual_positions SET {', '.join(updates)} WHERE id = ? AND user_id = ?",
+                f"UPDATE ml_manual_positions SET {', '.join(updates)} WHERE id = %s AND user_id = %s",
                 params
             )
             db.commit()
@@ -347,7 +347,7 @@ def delete_position(position_id):
         with get_db_connection() as db:
             cur = db.cursor()
             cur.execute(
-                "DELETE FROM ml_manual_positions WHERE id = ? AND user_id = ?",
+                "DELETE FROM ml_manual_positions WHERE id = %s AND user_id = %s",
                 (position_id, user_id)
             )
             db.commit()
@@ -375,7 +375,7 @@ def get_portfolio_summary():
                 """
                 SELECT id, market, symbol, side, quantity, entry_price
                 FROM ml_manual_positions
-                WHERE user_id = ?
+                WHERE user_id = %s
                 """,
                 (user_id,)
             )
@@ -495,7 +495,7 @@ def get_monitors():
                 SELECT id, name, position_ids, monitor_type, config, notification_config, 
                        is_active, last_run_at, next_run_at, last_result, run_count, created_at, updated_at
                 FROM ml_position_monitors
-                WHERE user_id = ?
+                WHERE user_id = %s
                 ORDER BY id DESC
                 """,
                 (user_id,)
@@ -561,7 +561,7 @@ def add_monitor():
                 """
                 INSERT INTO ml_position_monitors 
                 (user_id, name, position_ids, monitor_type, config, notification_config, is_active, next_run_at, created_at, updated_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, NOW() + INTERVAL '%s minutes', NOW(), NOW())
+                VALUES (%s, %s, %s, %s, %s, %s, %s, NOW() + INTERVAL '%s minutes', NOW(), NOW())
                 """,
                 (user_id, name, position_ids_json, monitor_type, config_json, notification_config_json, 
                  1 if is_active else 0, interval_minutes)
@@ -589,22 +589,22 @@ def update_monitor(monitor_id):
         params = []
         
         if 'name' in data:
-            updates.append('name = ?')
+            updates.append('name = %s')
             params.append((data.get('name') or '').strip())
         
         if 'position_ids' in data:
             position_ids = data.get('position_ids') or []
-            updates.append('position_ids = ?')
+            updates.append('position_ids = %s')
             params.append(json.dumps(position_ids if isinstance(position_ids, list) else [], ensure_ascii=False))
         
         if 'monitor_type' in data:
-            updates.append('monitor_type = ?')
+            updates.append('monitor_type = %s')
             params.append((data.get('monitor_type') or 'ai').strip())
         
         next_run_interval = None  # Will store interval for special handling
         if 'config' in data:
             config = data.get('config') or {}
-            updates.append('config = ?')
+            updates.append('config = %s')
             params.append(json.dumps(config if isinstance(config, dict) else {}, ensure_ascii=False))
             
             # Recalculate next_run_at if interval changed (handled separately for PostgreSQL)
@@ -612,11 +612,11 @@ def update_monitor(monitor_id):
         
         if 'notification_config' in data:
             notification_config = data.get('notification_config') or {}
-            updates.append('notification_config = ?')
+            updates.append('notification_config = %s')
             params.append(json.dumps(notification_config if isinstance(notification_config, dict) else {}, ensure_ascii=False))
         
         if 'is_active' in data:
-            updates.append('is_active = ?')
+            updates.append('is_active = %s')
             params.append(1 if data.get('is_active') else 0)
         
         if not updates:
@@ -633,7 +633,7 @@ def update_monitor(monitor_id):
         with get_db_connection() as db:
             cur = db.cursor()
             cur.execute(
-                f"UPDATE ml_position_monitors SET {', '.join(updates)} WHERE id = ? AND user_id = ?",
+                f"UPDATE ml_position_monitors SET {', '.join(updates)} WHERE id = %s AND user_id = %s",
                 params
             )
             db.commit()
@@ -655,7 +655,7 @@ def delete_monitor(monitor_id):
         with get_db_connection() as db:
             cur = db.cursor()
             cur.execute(
-                "DELETE FROM ml_position_monitors WHERE id = ? AND user_id = ?",
+                "DELETE FROM ml_position_monitors WHERE id = %s AND user_id = %s",
                 (monitor_id, user_id)
             )
             db.commit()
@@ -749,7 +749,7 @@ def get_alerts():
                        p.name as position_name, p.side as position_side
                 FROM ml_position_alerts a
                 LEFT JOIN ml_manual_positions p ON a.position_id = p.id
-                WHERE a.user_id = ?
+                WHERE a.user_id = %s
                 ORDER BY a.id DESC
                 """,
                 (user_id,)
@@ -813,7 +813,7 @@ def add_alert():
             with get_db_connection() as db:
                 cur = db.cursor()
                 cur.execute(
-                    "SELECT market, symbol FROM ml_manual_positions WHERE id = ? AND user_id = ?",
+                    "SELECT market, symbol FROM ml_manual_positions WHERE id = %s AND user_id = %s",
                     (position_id, user_id)
                 )
                 pos = cur.fetchone()
@@ -837,7 +837,7 @@ def add_alert():
             existing_alert_id = None
             if position_id:
                 cur.execute(
-                    "SELECT id FROM ml_position_alerts WHERE position_id = ? AND user_id = ?",
+                    "SELECT id FROM ml_position_alerts WHERE position_id = %s AND user_id = %s",
                     (position_id, user_id)
                 )
                 existing = cur.fetchone()
@@ -849,9 +849,9 @@ def add_alert():
                 cur.execute(
                     """
                     UPDATE ml_position_alerts 
-                    SET alert_type = ?, threshold = ?, notification_config = ?, 
-                        is_active = ?, is_triggered = 0, repeat_interval = ?, notes = ?, updated_at = NOW()
-                    WHERE id = ?
+                    SET alert_type = %s, threshold = %s, notification_config = %s, 
+                        is_active = %s, is_triggered = 0, repeat_interval = %s, notes = %s, updated_at = NOW()
+                    WHERE id = %s
                     """,
                     (alert_type, threshold, notification_config_json,
                      1 if is_active else 0, repeat_interval, notes, existing_alert_id)
@@ -864,7 +864,7 @@ def add_alert():
                     INSERT INTO ml_position_alerts 
                     (user_id, position_id, market, symbol, alert_type, threshold, notification_config, 
                      is_active, repeat_interval, notes, created_at, updated_at)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, NOW(), NOW())
                     """,
                     (user_id, position_id, market, symbol, alert_type, threshold, notification_config_json,
                      1 if is_active else 0, repeat_interval, notes)
@@ -893,32 +893,32 @@ def update_alert(alert_id):
         params = []
         
         if 'alert_type' in data:
-            updates.append('alert_type = ?')
+            updates.append('alert_type = %s')
             params.append((data.get('alert_type') or 'price_above').strip())
         
         if 'threshold' in data:
-            updates.append('threshold = ?')
+            updates.append('threshold = %s')
             params.append(float(data.get('threshold') or 0))
         
         if 'notification_config' in data:
             notification_config = data.get('notification_config') or {}
-            updates.append('notification_config = ?')
+            updates.append('notification_config = %s')
             params.append(json.dumps(notification_config if isinstance(notification_config, dict) else {}, ensure_ascii=False))
         
         if 'is_active' in data:
-            updates.append('is_active = ?')
+            updates.append('is_active = %s')
             params.append(1 if data.get('is_active') else 0)
             # Reset triggered state when re-activating
             if data.get('is_active'):
-                updates.append('is_triggered = ?')
+                updates.append('is_triggered = %s')
                 params.append(0)
         
         if 'repeat_interval' in data:
-            updates.append('repeat_interval = ?')
+            updates.append('repeat_interval = %s')
             params.append(int(data.get('repeat_interval') or 0))
         
         if 'notes' in data:
-            updates.append('notes = ?')
+            updates.append('notes = %s')
             params.append((data.get('notes') or '').strip())
         
         if not updates:
@@ -931,7 +931,7 @@ def update_alert(alert_id):
         with get_db_connection() as db:
             cur = db.cursor()
             cur.execute(
-                f"UPDATE ml_position_alerts SET {', '.join(updates)} WHERE id = ? AND user_id = ?",
+                f"UPDATE ml_position_alerts SET {', '.join(updates)} WHERE id = %s AND user_id = %s",
                 params
             )
             db.commit()
@@ -953,7 +953,7 @@ def delete_alert(alert_id):
         with get_db_connection() as db:
             cur = db.cursor()
             cur.execute(
-                "DELETE FROM ml_position_alerts WHERE id = ? AND user_id = ?",
+                "DELETE FROM ml_position_alerts WHERE id = %s AND user_id = %s",
                 (alert_id, user_id)
             )
             db.commit()
@@ -980,7 +980,7 @@ def get_groups():
                 """
                 SELECT group_name, COUNT(*) as count
                 FROM ml_manual_positions
-                WHERE user_id = ? AND group_name != ''
+                WHERE user_id = %s AND group_name != ''
                 GROUP BY group_name
                 ORDER BY group_name
                 """,
@@ -990,7 +990,7 @@ def get_groups():
             
             # Also get count of ungrouped
             cur.execute(
-                "SELECT COUNT(*) as count FROM ml_manual_positions WHERE user_id = ? AND (group_name IS NULL OR group_name = '')",
+                "SELECT COUNT(*) as count FROM ml_manual_positions WHERE user_id = %s AND (group_name IS NULL OR group_name = '')",
                 (user_id,)
             )
             ungrouped = cur.fetchone()
@@ -1036,7 +1036,7 @@ def rename_group():
         with get_db_connection() as db:
             cur = db.cursor()
             cur.execute(
-                "UPDATE ml_manual_positions SET group_name = ?, updated_at = NOW() WHERE user_id = ? AND group_name = ?",
+                "UPDATE ml_manual_positions SET group_name = %s, updated_at = NOW() WHERE user_id = %s AND group_name = %s",
                 (new_name, user_id, old_name)
             )
             db.commit()

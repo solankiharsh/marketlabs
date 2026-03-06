@@ -2303,7 +2303,7 @@ class TradingExecutor:
                 try:
                     with get_db_connection() as db:
                         cur = db.cursor()
-                        cur.execute("SELECT user_id FROM ml_strategies_trading WHERE id = ?", (strategy_id,))
+                        cur.execute("SELECT user_id FROM ml_strategies_trading WHERE id = %s", (strategy_id,))
                         row = cur.fetchone()
                         cur.close()
                     user_id = int((row or {}).get('user_id') or 1)
@@ -2315,7 +2315,7 @@ class TradingExecutor:
                     """
                     INSERT INTO ml_strategy_notifications
                     (user_id, strategy_id, symbol, signal_type, channels, title, message, payload_json, created_at)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, NOW())
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, NOW())
                     """,
                     (
                         int(user_id),

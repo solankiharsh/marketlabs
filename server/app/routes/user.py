@@ -378,7 +378,7 @@ def get_profile():
         # Add notification settings
         with get_db_connection() as db:
             cur = db.cursor()
-            cur.execute("SELECT notification_settings FROM ml_users WHERE id = ?", (user_id,))
+            cur.execute("SELECT notification_settings FROM ml_users WHERE id = %s", (user_id,))
             row = cur.fetchone()
             cur.close()
         
@@ -511,7 +511,7 @@ def get_my_referrals():
             
             # Get total count
             cur.execute(
-                "SELECT COUNT(*) as cnt FROM ml_users WHERE referred_by = ?",
+                "SELECT COUNT(*) as cnt FROM ml_users WHERE referred_by = %s",
                 (user_id,)
             )
             total = cur.fetchone()['cnt']
@@ -521,9 +521,9 @@ def get_my_referrals():
                 """
                 SELECT id, username, nickname, avatar, created_at 
                 FROM ml_users 
-                WHERE referred_by = ?
+                WHERE referred_by = %s
                 ORDER BY created_at DESC
-                LIMIT ? OFFSET ?
+                LIMIT %s OFFSET %s
                 """,
                 (user_id, page_size, offset)
             )
@@ -585,7 +585,7 @@ def get_notification_settings():
         
         with get_db_connection() as db:
             cur = db.cursor()
-            cur.execute("SELECT notification_settings, email FROM ml_users WHERE id = ?", (user_id,))
+            cur.execute("SELECT notification_settings, email FROM ml_users WHERE id = %s", (user_id,))
             row = cur.fetchone()
             cur.close()
         
@@ -668,7 +668,7 @@ def update_notification_settings():
         with get_db_connection() as db:
             cur = db.cursor()
             cur.execute(
-                "UPDATE ml_users SET notification_settings = ?, updated_at = NOW() WHERE id = ?",
+                "UPDATE ml_users SET notification_settings = %s, updated_at = NOW() WHERE id = %s",
                 (settings_json, user_id)
             )
             db.commit()
@@ -719,7 +719,7 @@ def change_password():
         from app.utils.db import get_db_connection
         with get_db_connection() as db:
             cur = db.cursor()
-            cur.execute("SELECT password_hash FROM ml_users WHERE id = ?", (user_id,))
+            cur.execute("SELECT password_hash FROM ml_users WHERE id = %s", (user_id,))
             row = cur.fetchone()
             cur.close()
         
@@ -804,12 +804,12 @@ def get_system_strategies():
             params = []
 
             if status_filter and status_filter != 'all':
-                conditions.append("s.status = ?")
+                conditions.append("s.status = %s")
                 params.append(status_filter)
 
             if search:
                 conditions.append(
-                    "(s.strategy_name ILIKE ? OR s.symbol ILIKE ? OR u.username ILIKE ? OR u.nickname ILIKE ?)"
+                    "(s.strategy_name ILIKE %s OR s.symbol ILIKE %s OR u.username ILIKE %s OR u.nickname ILIKE %s)"
                 )
                 like_val = f"%{search}%"
                 params.extend([like_val, like_val, like_val, like_val])
@@ -855,7 +855,7 @@ def get_system_strategies():
                 LEFT JOIN ml_users u ON u.id = s.user_id
                 {where_clause}
                 ORDER BY s.status DESC, s.updated_at DESC
-                LIMIT ? OFFSET ?
+                LIMIT %s OFFSET %s
             """
             cur.execute(query_sql, tuple(params) + (page_size, offset))
             strategies = cur.fetchall() or []
@@ -866,7 +866,7 @@ def get_system_strategies():
             # Batch load positions for these strategies
             positions_map = {}
             if strategy_ids:
-                placeholders = ','.join(['?'] * len(strategy_ids))
+                placeholders = ','.join(['%s'] * len(strategy_ids))
                 cur.execute(
                     f"""
                     SELECT strategy_id, symbol, side, size, entry_price, current_price, 
@@ -886,7 +886,7 @@ def get_system_strategies():
             # Batch load recent trade stats (realized PnL per strategy)
             trade_stats_map = {}
             if strategy_ids:
-                placeholders = ','.join(['?'] * len(strategy_ids))
+                placeholders = ','.join(['%s'] * len(strategy_ids))
                 cur.execute(
                     f"""
                     SELECT strategy_id, 

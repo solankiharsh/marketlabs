@@ -421,7 +421,7 @@ class StrategyService:
             with get_db_connection() as db:
                 cur = db.cursor()
                 cur.execute(
-                    "SELECT strategy_type FROM ml_strategies_trading WHERE id = ?",
+                    "SELECT strategy_type FROM ml_strategies_trading WHERE id = %s",
                     (strategy_id,)
                 )
                 row = cur.fetchone()
@@ -437,12 +437,12 @@ class StrategyService:
                 cur = db.cursor()
                 if user_id is not None:
                     cur.execute(
-                        "UPDATE ml_strategies_trading SET status = ?, updated_at = NOW() WHERE id = ? AND user_id = ?",
+                        "UPDATE ml_strategies_trading SET status = %s, updated_at = NOW() WHERE id = %s AND user_id = %s",
                         (status, strategy_id, user_id)
                     )
                 else:
                     cur.execute(
-                        "UPDATE ml_strategies_trading SET status = ?, updated_at = NOW() WHERE id = ?",
+                        "UPDATE ml_strategies_trading SET status = %s, updated_at = NOW() WHERE id = %s",
                         (status, strategy_id)
                     )
                 db.commit()
@@ -483,7 +483,7 @@ class StrategyService:
                     """
                     SELECT *
                     FROM ml_strategies_trading
-                    WHERE user_id = ?
+                    WHERE user_id = %s
                     ORDER BY id DESC
                     """,
                     (user_id,)
@@ -517,9 +517,9 @@ class StrategyService:
             with get_db_connection() as db:
                 cur = db.cursor()
                 if user_id is not None:
-                    cur.execute("SELECT * FROM ml_strategies_trading WHERE id = ? AND user_id = ?", (strategy_id, user_id))
+                    cur.execute("SELECT * FROM ml_strategies_trading WHERE id = %s AND user_id = %s", (strategy_id, user_id))
                 else:
-                    cur.execute("SELECT * FROM ml_strategies_trading WHERE id = ?", (strategy_id,))
+                    cur.execute("SELECT * FROM ml_strategies_trading WHERE id = %s", (strategy_id,))
                 r = cur.fetchone()
                 cur.close()
             if not r:
@@ -585,7 +585,7 @@ class StrategyService:
                  exchange_config, indicator_config, trading_config, ai_model_config, decide_interval,
                  strategy_group_id, group_base_name,
                  created_at, updated_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, NOW(), NOW())
                 """,
                 (
                     user_id,
@@ -749,12 +749,12 @@ class StrategyService:
                 cur = db.cursor()
                 if user_id is not None:
                     cur.execute(
-                        "SELECT id FROM ml_strategies_trading WHERE strategy_group_id = ? AND user_id = ?",
+                        "SELECT id FROM ml_strategies_trading WHERE strategy_group_id = %s AND user_id = %s",
                         (strategy_group_id, user_id)
                     )
                 else:
                     cur.execute(
-                        "SELECT id FROM ml_strategies_trading WHERE strategy_group_id = ?",
+                        "SELECT id FROM ml_strategies_trading WHERE strategy_group_id = %s",
                         (strategy_group_id,)
                     )
                 rows = cur.fetchall() or []
@@ -803,21 +803,21 @@ class StrategyService:
             cur.execute(
                 """
                 UPDATE ml_strategies_trading
-                SET strategy_name = ?,
-                    market_category = ?,
-                    execution_mode = ?,
-                    notification_config = ?,
-                    symbol = ?,
-                    timeframe = ?,
-                    initial_capital = ?,
-                    leverage = ?,
-                    market_type = ?,
-                    exchange_config = ?,
-                    indicator_config = ?,
-                    trading_config = ?,
-                    ai_model_config = ?,
+                SET strategy_name = %s,
+                    market_category = %s,
+                    execution_mode = %s,
+                    notification_config = %s,
+                    symbol = %s,
+                    timeframe = %s,
+                    initial_capital = %s,
+                    leverage = %s,
+                    market_type = %s,
+                    exchange_config = %s,
+                    indicator_config = %s,
+                    trading_config = %s,
+                    ai_model_config = %s,
                     updated_at = NOW()
-                WHERE id = ?
+                WHERE id = %s
                 """,
                 (
                     name,
@@ -846,9 +846,9 @@ class StrategyService:
             with get_db_connection() as db:
                 cur = db.cursor()
                 if user_id is not None:
-                    cur.execute("DELETE FROM ml_strategies_trading WHERE id = ? AND user_id = ?", (strategy_id, user_id))
+                    cur.execute("DELETE FROM ml_strategies_trading WHERE id = %s AND user_id = %s", (strategy_id, user_id))
                 else:
-                    cur.execute("DELETE FROM ml_strategies_trading WHERE id = ?", (strategy_id,))
+                    cur.execute("DELETE FROM ml_strategies_trading WHERE id = %s", (strategy_id,))
                 db.commit()
                 cur.close()
             return True

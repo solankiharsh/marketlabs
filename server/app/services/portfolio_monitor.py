@@ -76,12 +76,12 @@ def _get_positions_for_monitor(position_ids: List[int] = None, user_id: int = No
         with get_db_connection() as db:
             cur = db.cursor()
             if position_ids:
-                placeholders = ','.join(['?' for _ in position_ids])
+                placeholders = ','.join(['%s' for _ in position_ids])
                 cur.execute(
                     f"""
                     SELECT id, market, symbol, name, side, quantity, entry_price, group_name
                     FROM ml_manual_positions
-                    WHERE user_id = ? AND id IN ({placeholders})
+                    WHERE user_id = %s AND id IN ({placeholders})
                     """,
                     [effective_user_id] + list(position_ids)
                 )
@@ -90,7 +90,7 @@ def _get_positions_for_monitor(position_ids: List[int] = None, user_id: int = No
                     """
                     SELECT id, market, symbol, name, side, quantity, entry_price, group_name
                     FROM ml_manual_positions
-                    WHERE user_id = ?
+                    WHERE user_id = %s
                     """,
                     (effective_user_id,)
                 )
@@ -716,7 +716,7 @@ def _send_monitor_notification(
                                 """
                                 INSERT INTO ml_strategy_notifications
                                 (user_id, strategy_id, symbol, signal_type, channels, title, message, payload_json, created_at)
-                                VALUES (?, NULL, ?, ?, ?, ?, ?, ?, NOW())
+                                VALUES (%s, NULL, %s, %s, %s, %s, %s, %s, NOW())
                                 """,
                                 (effective_user_id, 'PORTFOLIO', 'ai_monitor', 'browser', error_title, error_msg,
                                  json.dumps(result, ensure_ascii=False))
@@ -763,7 +763,7 @@ def _send_monitor_notification(
                             """
                             INSERT INTO ml_strategy_notifications
                             (user_id, strategy_id, symbol, signal_type, channels, title, message, payload_json, created_at)
-                            VALUES (?, NULL, ?, ?, ?, ?, ?, ?, NOW())
+                            VALUES (%s, NULL, %s, %s, %s, %s, %s, %s, NOW())
                             """,
                             (effective_user_id, 'PORTFOLIO', 'ai_monitor', 'browser', title, html_report,
                              json.dumps(result, ensure_ascii=False))
@@ -833,7 +833,7 @@ def run_single_monitor(monitor_id: int, override_language: str = None, user_id: 
                 """
                 SELECT id, user_id, name, position_ids, monitor_type, config, notification_config
                 FROM ml_position_monitors
-                WHERE id = ? AND user_id = ?
+                WHERE id = %s AND user_id = %s
                 """,
                 (monitor_id, effective_user_id)
             )
@@ -877,10 +877,10 @@ def run_single_monitor(monitor_id: int, override_language: str = None, user_id: 
                 UPDATE ml_position_monitors
                 SET last_run_at = NOW(), 
                     next_run_at = NOW() + INTERVAL '%s minutes', 
-                    last_result = ?, 
+                    last_result = %s, 
                     run_count = run_count + 1, 
                     updated_at = NOW()
-                WHERE id = ?
+                WHERE id = %s
                 """,
                 (interval_minutes, json.dumps(result, ensure_ascii=False), monitor_id)
             )
@@ -1025,7 +1025,7 @@ def _check_position_alerts():
                             """
                             UPDATE ml_position_alerts
                             SET is_triggered = 1, last_triggered_at = NOW(), trigger_count = trigger_count + 1, updated_at = NOW()
-                            WHERE id = ?
+                            WHERE id = %s
                             """,
                             (alert_id,)
                         )
@@ -1047,7 +1047,7 @@ def _check_position_alerts():
                                         """
                                         INSERT INTO ml_strategy_notifications
                                         (user_id, strategy_id, symbol, signal_type, channels, title, message, payload_json, created_at)
-                                        VALUES (?, NULL, ?, ?, ?, ?, ?, ?, NOW())
+                                        VALUES (%s, NULL, %s, %s, %s, %s, %s, %s, NOW())
                                         """,
                                         (alert_user_id, symbol, 'price_alert', 'browser', alert_title, alert_message,
                                          json.dumps({'alert_id': alert_id, 'alert_type': alert_type}, ensure_ascii=False))
@@ -1091,7 +1091,7 @@ def notify_strategy_signal_for_positions(market: str, symbol: str, signal_type: 
                     """
                     SELECT id, user_id, market, symbol, name, side, quantity, entry_price, group_name
                     FROM ml_manual_positions
-                    WHERE user_id = ? AND symbol = ?
+                    WHERE user_id = %s AND symbol = %s
                     """,
                     (user_id, symbol)
                 )
@@ -1100,7 +1100,7 @@ def notify_strategy_signal_for_positions(market: str, symbol: str, signal_type: 
                     """
                     SELECT id, user_id, market, symbol, name, side, quantity, entry_price, group_name
                     FROM ml_manual_positions
-                    WHERE symbol = ?
+                    WHERE symbol = %s
                     """,
                     (symbol,)
                 )
@@ -1139,7 +1139,7 @@ Please check whether your position needs adjustment."""
                     """
                     INSERT INTO ml_strategy_notifications
                     (user_id, strategy_id, symbol, signal_type, channels, title, message, payload_json, created_at)
-                    VALUES (?, NULL, ?, ?, ?, ?, ?, ?, NOW())
+                    VALUES (%s, NULL, %s, %s, %s, %s, %s, %s, NOW())
                     """,
                     (pos_user_id, symbol, 'strategy_linkage', 'browser', title, message,
                      json.dumps({'signal_type': signal_type}, ensure_ascii=False))

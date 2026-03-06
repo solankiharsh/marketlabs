@@ -44,9 +44,9 @@ def get_hot_symbols(market: str, limit: int = 10) -> List[Dict]:
             cur.execute(
                 """
                 SELECT market, symbol, name FROM ml_market_symbols
-                WHERE market = ? AND is_active = 1 AND is_hot = 1
+                WHERE market = %s AND is_active = 1 AND is_hot = 1
                 ORDER BY sort_order DESC
-                LIMIT ?
+                LIMIT %s
                 """,
                 (market, max(limit, 0))
             )
@@ -84,10 +84,10 @@ def search_symbols(market: str, keyword: str, limit: int = 20) -> List[Dict]:
             cur.execute(
                 """
                 SELECT market, symbol, name FROM ml_market_symbols
-                WHERE market = ? AND is_active = 1
-                  AND (UPPER(symbol) LIKE UPPER(?) OR UPPER(name) LIKE UPPER(?))
+                WHERE market = %s AND is_active = 1
+                  AND (UPPER(symbol) LIKE UPPER(%s) OR UPPER(name) LIKE UPPER(%s))
                 ORDER BY sort_order DESC
-                LIMIT ?
+                LIMIT %s
                 """,
                 (market, pattern, pattern, max(limit, 0))
             )
@@ -138,7 +138,7 @@ def get_symbol_name(market: str, symbol: str) -> Optional[str]:
             cur = db.cursor()
             for cand in candidate_symbols:
                 cur.execute(
-                    "SELECT name FROM ml_market_symbols WHERE market = ? AND UPPER(symbol) = ?",
+                    "SELECT name FROM ml_market_symbols WHERE market = %s AND UPPER(symbol) = %s",
                     (m, cand.upper())
                 )
                 row = cur.fetchone()
@@ -170,7 +170,7 @@ def get_all_symbols(market: str = None) -> List[Dict]:
                     """
                     SELECT market, symbol, name, exchange, currency, is_hot, sort_order
                     FROM ml_market_symbols
-                    WHERE market = ? AND is_active = 1
+                    WHERE market = %s AND is_active = 1
                     ORDER BY sort_order DESC
                     """,
                     (market.strip(),)

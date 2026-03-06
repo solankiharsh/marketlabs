@@ -452,7 +452,7 @@ def _fetch_commodities() -> List[Dict[str, Any]]:
 def _fetch_fear_greed_index() -> Dict[str, Any]:
     """Fetch Fear & Greed Index from alternative.me (crypto)."""
     try:
-        url = "https://api.alternative.me/fng/?limit=1"
+        url = "https://api.alternative.me/fng/%slimit=1"
         logger.debug(f"Fetching Fear & Greed Index from {url}")
         resp = requests.get(url, timeout=15)
         resp.raise_for_status()

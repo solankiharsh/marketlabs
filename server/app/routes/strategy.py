@@ -309,7 +309,7 @@ def get_trades():
                 """
                 SELECT id, strategy_id, symbol, type, price, amount, value, commission, commission_ccy, profit, created_at
                 FROM ml_strategy_trades
-                WHERE strategy_id = ?
+                WHERE strategy_id = %s
                 ORDER BY id DESC
                 """,
                 (strategy_id,)
@@ -367,7 +367,7 @@ def get_positions():
                 SELECT id, strategy_id, symbol, side, size, entry_price, current_price, highest_price,
                        unrealized_pnl, pnl_percent, equity, updated_at
                 FROM ml_strategy_positions
-                WHERE strategy_id = ?
+                WHERE strategy_id = %s
                 ORDER BY id DESC
                 """,
                 (strategy_id,)
@@ -441,8 +441,8 @@ def get_positions():
                     cur.execute(
                         """
                         UPDATE ml_strategy_positions
-                        SET current_price = ?, unrealized_pnl = ?, pnl_percent = ?, updated_at = NOW()
-                        WHERE id = ?
+                        SET current_price = %s, unrealized_pnl = %s, pnl_percent = %s, updated_at = NOW()
+                        WHERE id = %s
                         """,
                         (float(cp or 0.0), float(pnl), float(pct), int(rr.get("id"))),
                     )
@@ -481,7 +481,7 @@ def get_equity_curve():
                 """
                 SELECT created_at, profit
                 FROM ml_strategy_trades
-                WHERE strategy_id = ?
+                WHERE strategy_id = %s
                 ORDER BY created_at ASC
                 """,
                 (strategy_id,)
@@ -808,7 +808,7 @@ def get_strategy_notifications():
         user_strategy_ids = []
         with get_db_connection() as db:
             cur = db.cursor()
-            cur.execute("SELECT id FROM ml_strategies_trading WHERE user_id = ?", (user_id,))
+            cur.execute("SELECT id FROM ml_strategies_trading WHERE user_id = %s", (user_id,))
             rows = cur.fetchall() or []
             user_strategy_ids = [r.get('id') for r in rows if r.get('id')]
             cur.close()
@@ -819,23 +819,23 @@ def get_strategy_notifications():
         # Filter by user's strategies
         if strategy_id:
             if strategy_id in user_strategy_ids:
-                where.append("strategy_id = ?")
+                where.append("strategy_id = %s")
                 args.append(int(strategy_id))
             else:
                 return jsonify({'code': 1, 'msg': 'success', 'data': {'items': []}})
         else:
             if user_strategy_ids:
-                placeholders = ",".join(["?"] * len(user_strategy_ids))
-                where.append(f"(strategy_id IN ({placeholders}) OR (strategy_id IS NULL AND user_id = ?))")
+                placeholders = ",".join(["%s"] * len(user_strategy_ids))
+                where.append(f"(strategy_id IN ({placeholders}) OR (strategy_id IS NULL AND user_id = %s))")
                 args.extend(user_strategy_ids)
                 args.append(user_id)
             else:
                 # Only portfolio monitor notifications (strategy_id is NULL)
-                where.append("strategy_id IS NULL AND user_id = ?")
+                where.append("strategy_id IS NULL AND user_id = %s")
                 args.append(user_id)
         
         if since_id:
-            where.append("id > ?")
+            where.append("id > %s")
             args.append(int(since_id))
         where_sql = ("WHERE " + " AND ".join(where)) if where else ""
 
@@ -847,7 +847,7 @@ def get_strategy_notifications():
                 FROM ml_strategy_notifications
                 {where_sql}
                 ORDER BY id DESC
-                LIMIT ?
+                LIMIT %s
                 """,
                 tuple(args + [int(limit)]),
             )
@@ -895,9 +895,9 @@ def mark_notification_read():
             cur.execute(
                 """
                 UPDATE ml_strategy_notifications SET is_read = 1 
-                WHERE id = ? AND (
-                    strategy_id IN (SELECT id FROM ml_strategies_trading WHERE user_id = ?)
-                    OR (strategy_id IS NULL AND user_id = ?)
+                WHERE id = %s AND (
+                    strategy_id IN (SELECT id FROM ml_strategies_trading WHERE user_id = %s)
+                    OR (strategy_id IS NULL AND user_id = %s)
                 )
                 """,
                 (int(notification_id), user_id, user_id)
@@ -922,8 +922,8 @@ def mark_all_notifications_read():
             cur.execute(
                 """
                 UPDATE ml_strategy_notifications SET is_read = 1 
-                WHERE strategy_id IN (SELECT id FROM ml_strategies_trading WHERE user_id = ?)
-                   OR (strategy_id IS NULL AND user_id = ?)
+                WHERE strategy_id IN (SELECT id FROM ml_strategies_trading WHERE user_id = %s)
+                   OR (strategy_id IS NULL AND user_id = %s)
                 """,
                 (user_id, user_id)
             )
@@ -947,8 +947,8 @@ def clear_notifications():
             cur.execute(
                 """
                 DELETE FROM ml_strategy_notifications 
-                WHERE strategy_id IN (SELECT id FROM ml_strategies_trading WHERE user_id = ?)
-                   OR (strategy_id IS NULL AND user_id = ?)
+                WHERE strategy_id IN (SELECT id FROM ml_strategies_trading WHERE user_id = %s)
+                   OR (strategy_id IS NULL AND user_id = %s)
                 """,
                 (user_id, user_id)
             )

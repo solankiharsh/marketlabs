@@ -151,7 +151,7 @@ class UsdtPaymentService:
                     """
                     INSERT INTO ml_usdt_orders
                       (user_id, plan, chain, amount_usdt, address_index, address, status, expires_at, created_at, updated_at)
-                    VALUES (?, ?, 'TRC20', ?, ?, ?, 'pending', ?, NOW(), NOW())
+                    VALUES (%s, %s, 'TRC20', %s, %s, %s, 'pending', %s, NOW(), NOW())
                     RETURNING id
                     """,
                     (user_id, plan, float(amount), next_idx, address, expires_at),
@@ -184,7 +184,7 @@ class UsdtPaymentService:
                     SELECT id, user_id, plan, chain, amount_usdt, address_index, address, status, tx_hash,
                            paid_at, confirmed_at, expires_at, created_at, updated_at
                     FROM ml_usdt_orders
-                    WHERE id = ? AND user_id = ?
+                    WHERE id = %s AND user_id = %s
                     """,
                     (order_id, user_id),
                 )
@@ -202,7 +202,7 @@ class UsdtPaymentService:
                         SELECT id, user_id, plan, chain, amount_usdt, address_index, address, status, tx_hash,
                                paid_at, confirmed_at, expires_at, created_at, updated_at
                         FROM ml_usdt_orders
-                        WHERE id = ? AND user_id = ?
+                        WHERE id = %s AND user_id = %s
                         """,
                         (order_id, user_id),
                     )
@@ -244,7 +244,7 @@ class UsdtPaymentService:
             if exp.tzinfo is None:
                 exp = exp.replace(tzinfo=timezone.utc)
             if status == "pending" and exp <= now:
-                cur.execute("UPDATE ml_usdt_orders SET status = 'expired', updated_at = NOW() WHERE id = ?", (row["id"],))
+                cur.execute("UPDATE ml_usdt_orders SET status = 'expired', updated_at = NOW() WHERE id = %s", (row["id"],))
                 return
 
         if chain != "TRC20":
@@ -264,7 +264,7 @@ class UsdtPaymentService:
         tx_hash = tx.get("transaction_id") or ""
         paid_at = datetime.now(timezone.utc)
         cur.execute(
-            "UPDATE ml_usdt_orders SET status = 'paid', tx_hash = ?, paid_at = ?, updated_at = NOW() WHERE id = ? AND status = 'pending'",
+            "UPDATE ml_usdt_orders SET status = 'paid', tx_hash = %s, paid_at = %s, updated_at = NOW() WHERE id = %s AND status = 'pending'",
             (tx_hash, paid_at, row["id"]),
         )
 
@@ -290,7 +290,7 @@ class UsdtPaymentService:
     def _confirm_and_activate_in_tx(self, cur, order_id: int, user_id: int, plan: str, tx_hash: str) -> None:
         # Mark confirmed if not already
         cur.execute(
-            "UPDATE ml_usdt_orders SET status='confirmed', confirmed_at = NOW(), updated_at = NOW() WHERE id = ? AND status IN ('paid','pending')",
+            "UPDATE ml_usdt_orders SET status='confirmed', confirmed_at = NOW(), updated_at = NOW() WHERE id = %s AND status IN ('paid','pending')",
             (order_id,),
         )
         # Activate membership (idempotent-ish: billing_service stacks vip)

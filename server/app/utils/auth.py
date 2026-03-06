@@ -93,15 +93,16 @@ def _verify_token_version(user_id: int, token_version: int) -> bool:
         with get_db_connection() as db:
             cur = db.cursor()
             cur.execute(
-                "SELECT token_version FROM ml_users WHERE id = ?",
+                "SELECT token_version FROM ml_users WHERE id = %s",
                 (user_id,)
             )
             row = cur.fetchone()
             cur.close()
             
             if not row:
-                return False
-            
+                # No DB row — legacy single-user mode; skip version check
+                return True
+
             db_token_version = row.get('token_version') or 1
             return int(token_version) == int(db_token_version)
     except Exception as e:

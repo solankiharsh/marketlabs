@@ -146,7 +146,7 @@ def get_indicators():
                   publish_to_community, pricing_type, price, is_encrypted, preview_image, vip_free,
                   createtime, updatetime, created_at, updated_at
                 FROM ml_indicator_codes
-                WHERE user_id = ?
+                WHERE user_id = %s
                 ORDER BY id DESC
                 """,
                 (user_id,),
@@ -172,7 +172,7 @@ def save_indicator():
         id: number (0 for create),
         name: string,
         code: string,
-        description?: string,
+        description%s: string,
         ...
       }
     """
@@ -221,7 +221,7 @@ def save_indicator():
             if indicator_id and indicator_id > 0:
                 if publish_to_community:
                     cur.execute(
-                        "SELECT publish_to_community, review_status FROM ml_indicator_codes WHERE id = ? AND user_id = ?",
+                        "SELECT publish_to_community, review_status FROM ml_indicator_codes WHERE id = %s AND user_id = %s",
                         (indicator_id, user_id)
                     )
                     existing = cur.fetchone()
@@ -231,12 +231,12 @@ def save_indicator():
                         cur.execute(
                             """
                             UPDATE ml_indicator_codes
-                            SET name = ?, code = ?, description = ?,
-                                publish_to_community = ?, pricing_type = ?, price = ?, preview_image = ?,
-                                vip_free = ?,
-                                review_status = ?, review_note = '', reviewed_at = NOW(), reviewed_by = ?,
-                                updatetime = ?, updated_at = NOW()
-                            WHERE id = ? AND user_id = ? AND (is_buy IS NULL OR is_buy = 0)
+                            SET name = %s, code = %s, description = %s,
+                                publish_to_community = %s, pricing_type = %s, price = %s, preview_image = %s,
+                                vip_free = %s,
+                                review_status = %s, review_note = '', reviewed_at = NOW(), reviewed_by = %s,
+                                updatetime = %s, updated_at = NOW()
+                            WHERE id = %s AND user_id = %s AND (is_buy IS NULL OR is_buy = 0)
                             """,
                             (name, code, description, publish_to_community, pricing_type, price, preview_image, vip_free,
                              new_review_status, user_id if is_admin else None, now, indicator_id, user_id),
@@ -245,11 +245,11 @@ def save_indicator():
                         cur.execute(
                             """
                             UPDATE ml_indicator_codes
-                            SET name = ?, code = ?, description = ?,
-                                publish_to_community = ?, pricing_type = ?, price = ?, preview_image = ?,
-                                vip_free = ?,
-                                updatetime = ?, updated_at = NOW()
-                            WHERE id = ? AND user_id = ? AND (is_buy IS NULL OR is_buy = 0)
+                            SET name = %s, code = %s, description = %s,
+                                publish_to_community = %s, pricing_type = %s, price = %s, preview_image = %s,
+                                vip_free = %s,
+                                updatetime = %s, updated_at = NOW()
+                            WHERE id = %s AND user_id = %s AND (is_buy IS NULL OR is_buy = 0)
                             """,
                             (name, code, description, publish_to_community, pricing_type, price, preview_image, vip_free, now, indicator_id, user_id),
                         )
@@ -257,12 +257,12 @@ def save_indicator():
                     cur.execute(
                         """
                         UPDATE ml_indicator_codes
-                        SET name = ?, code = ?, description = ?,
-                            publish_to_community = ?, pricing_type = ?, price = ?, preview_image = ?,
+                        SET name = %s, code = %s, description = %s,
+                            publish_to_community = %s, pricing_type = %s, price = %s, preview_image = %s,
                             vip_free = 0,
                             review_status = NULL, review_note = '', reviewed_at = NULL, reviewed_by = NULL,
-                            updatetime = ?, updated_at = NOW()
-                        WHERE id = ? AND user_id = ? AND (is_buy IS NULL OR is_buy = 0)
+                            updatetime = %s, updated_at = NOW()
+                        WHERE id = %s AND user_id = %s AND (is_buy IS NULL OR is_buy = 0)
                         """,
                         (name, code, description, publish_to_community, pricing_type, price, preview_image, now, indicator_id, user_id),
                     )
@@ -276,7 +276,7 @@ def save_indicator():
                       (user_id, is_buy, end_time, name, code, description,
                        publish_to_community, pricing_type, price, preview_image, vip_free, review_status,
                        createtime, updatetime, created_at, updated_at)
-                    VALUES (?, 0, 1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())
+                    VALUES (%s, 0, 1, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, NOW(), NOW())
                     """,
                     (user_id, name, code, description, publish_to_community, pricing_type, price, preview_image, vip_free, review_status, now, now),
                 )
@@ -304,7 +304,7 @@ def delete_indicator():
         with get_db_connection() as db:
             cur = db.cursor()
             cur.execute(
-                "DELETE FROM ml_indicator_codes WHERE id = ? AND user_id = ? AND (is_buy IS NULL OR is_buy = 0)",
+                "DELETE FROM ml_indicator_codes WHERE id = %s AND user_id = %s AND (is_buy IS NULL OR is_buy = 0)",
                 (indicator_id, user_id),
             )
             db.commit()

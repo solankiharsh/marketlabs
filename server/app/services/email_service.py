@@ -93,7 +93,7 @@ class EmailService:
                     """
                     UPDATE ml_verification_codes 
                     SET used_at = NOW() 
-                    WHERE email = ? AND type = ? AND used_at IS NULL
+                    WHERE email = %s AND type = %s AND used_at IS NULL
                     """,
                     (email, code_type)
                 )
@@ -103,7 +103,7 @@ class EmailService:
                     """
                     INSERT INTO ml_verification_codes 
                     (email, code, type, expires_at, ip_address)
-                    VALUES (?, ?, ?, ?, ?)
+                    VALUES (%s, %s, %s, %s, %s)
                     """,
                     (email, code, code_type, expires_at, ip_address)
                 )
@@ -137,8 +137,8 @@ class EmailService:
                 cur.execute(
                     """
                     SELECT COUNT(*) as cnt FROM ml_verification_codes
-                    WHERE email = ? AND type = ?
-                    AND attempts >= ? AND last_attempt_at > ?
+                    WHERE email = %s AND type = %s
+                    AND attempts >= %s AND last_attempt_at > %s
                     AND used_at IS NULL
                     """,
                     (email, code_type, self.code_max_attempts, lock_window.isoformat())
@@ -152,7 +152,7 @@ class EmailService:
                 cur.execute(
                     """
                     SELECT id, code as stored_code, expires_at, attempts FROM ml_verification_codes
-                    WHERE email = ? AND type = ? AND used_at IS NULL
+                    WHERE email = %s AND type = %s AND used_at IS NULL
                     ORDER BY created_at DESC
                     LIMIT 1
                     """,
@@ -175,8 +175,8 @@ class EmailService:
                     cur.execute(
                         """
                         UPDATE ml_verification_codes 
-                        SET attempts = ?, last_attempt_at = NOW()
-                        WHERE id = ?
+                        SET attempts = %s, last_attempt_at = NOW()
+                        WHERE id = %s
                         """,
                         (new_attempts, code_id)
                     )
@@ -199,7 +199,7 @@ class EmailService:
                 
                 # Mark as used
                 cur.execute(
-                    "UPDATE ml_verification_codes SET used_at = NOW() WHERE id = ?",
+                    "UPDATE ml_verification_codes SET used_at = NOW() WHERE id = %s",
                     (code_id,)
                 )
                 db.commit()

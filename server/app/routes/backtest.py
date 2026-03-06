@@ -177,7 +177,7 @@ def run_backtest():
                 iid = int(indicator_id)
                 with get_db_connection() as db:
                     cur = db.cursor()
-                    cur.execute("SELECT code FROM ml_indicator_codes WHERE id = ?", (iid,))
+                    cur.execute("SELECT code FROM ml_indicator_codes WHERE id = %s", (iid,))
                     row = cur.fetchone()
                     cur.close()
                 if row and row.get('code'):
@@ -271,7 +271,7 @@ def run_backtest():
                     (user_id, indicator_id, market, symbol, timeframe, start_date, end_date,
                      initial_capital, commission, slippage, leverage, trade_direction,
                      strategy_config, status, error_message, result_json, created_at)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, NOW())
                     """,
                     (
                         user_id,
@@ -331,7 +331,7 @@ def run_backtest():
                     (user_id, indicator_id, market, symbol, timeframe, start_date, end_date,
                      initial_capital, commission, slippage, leverage, trade_direction,
                      strategy_config, status, error_message, result_json, created_at)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, NOW())
                     """,
                     (
                         user_id,
@@ -390,22 +390,22 @@ def get_backtest_history():
         market = (request.args.get('market') or '').strip()
         timeframe = (request.args.get('timeframe') or '').strip()
 
-        where = ["user_id = ?"]
+        where = ["user_id = %s"]
         params = [user_id]
         if indicator_id is not None and str(indicator_id).strip() != "":
             try:
-                where.append("indicator_id = ?")
+                where.append("indicator_id = %s")
                 params.append(int(indicator_id))
             except Exception:
                 pass
         if symbol:
-            where.append("symbol = ?")
+            where.append("symbol = %s")
             params.append(symbol)
         if market:
-            where.append("market = ?")
+            where.append("market = %s")
             params.append(market)
         if timeframe:
-            where.append("timeframe = ?")
+            where.append("timeframe = %s")
             params.append(timeframe)
         where_sql = " AND ".join(where)
 
@@ -420,7 +420,7 @@ def get_backtest_history():
                 FROM ml_backtest_runs
                 WHERE {where_sql}
                 ORDER BY id DESC
-                LIMIT ? OFFSET ?
+                LIMIT %s OFFSET %s
                 """,
                 (*params, limit, offset)
             )
@@ -465,7 +465,7 @@ def get_backtest_run():
                        leverage, trade_direction, strategy_config, status, error_message,
                        result_json, created_at
                 FROM ml_backtest_runs
-                WHERE id = ? AND user_id = ?
+                WHERE id = %s AND user_id = %s
                 """,
                 (run_id, user_id),
             )
@@ -634,7 +634,7 @@ def ai_analyze_backtest_runs():
         if not run_ids:
             return jsonify({'code': 0, 'msg': 'runIds is required', 'data': None}), 400
 
-        placeholders = ",".join(["?"] * len(run_ids))
+        placeholders = ",".join(["%s"] * len(run_ids))
         with get_db_connection() as db:
             cur = db.cursor()
             cur.execute(
@@ -644,7 +644,7 @@ def ai_analyze_backtest_runs():
                        leverage, trade_direction, strategy_config, status, error_message,
                        result_json, created_at
                 FROM ml_backtest_runs
-                WHERE user_id = ? AND id IN ({placeholders})
+                WHERE user_id = %s AND id IN ({placeholders})
                 ORDER BY id DESC
                 """,
                 (user_id, *run_ids),

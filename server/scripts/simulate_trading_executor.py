@@ -256,7 +256,7 @@ def _insert_strategy(
              exchange_config, indicator_config, trading_config, ai_model_config, decide_interval,
              created_at, updated_at)
             VALUES
-            (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             """,
             (
                 "SIM_ETH_1m",
@@ -361,7 +361,7 @@ def main() -> None:
     # Stop strategy by updating DB status.
     with get_db_connection() as db:
         cur = db.cursor()
-        cur.execute("UPDATE ml_strategies_trading SET status = 'stopped' WHERE id = ?", (strategy_id,))
+        cur.execute("UPDATE ml_strategies_trading SET status = 'stopped' WHERE id = %s", (strategy_id,))
         db.commit()
         cur.close()
 
@@ -375,7 +375,7 @@ def main() -> None:
             """
             SELECT id, strategy_id, symbol, signal_type, amount, price, status, created_at
             FROM pending_orders
-            WHERE strategy_id = ?
+            WHERE strategy_id = %s
             ORDER BY id ASC
             """,
             (strategy_id,),

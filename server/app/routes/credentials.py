@@ -42,7 +42,7 @@ def list_credentials():
                 """
                 SELECT id, user_id, name, exchange_id, api_key_hint, created_at, updated_at
                 FROM ml_exchange_credentials
-                WHERE user_id = ?
+                WHERE user_id = %s
                 ORDER BY id DESC
                 """,
                 (user_id,)
@@ -87,7 +87,7 @@ def create_credential():
             cur.execute(
                 """
                 INSERT INTO ml_exchange_credentials (user_id, name, exchange_id, api_key_hint, encrypted_config, created_at, updated_at)
-                VALUES (?, ?, ?, ?, ?, NOW(), NOW())
+                VALUES (%s, %s, %s, %s, %s, NOW(), NOW())
                 """,
                 (user_id, name, exchange_id, _api_key_hint(api_key), plaintext_config)
             )
@@ -115,7 +115,7 @@ def delete_credential():
         with get_db_connection() as db:
             cur = db.cursor()
             cur.execute(
-                "DELETE FROM ml_exchange_credentials WHERE id = ? AND user_id = ?",
+                "DELETE FROM ml_exchange_credentials WHERE id = %s AND user_id = %s",
                 (cred_id, user_id)
             )
             db.commit()
@@ -146,7 +146,7 @@ def get_credential():
                 """
                 SELECT id, user_id, name, exchange_id, encrypted_config, api_key_hint, created_at, updated_at
                 FROM ml_exchange_credentials
-                WHERE id = ? AND user_id = ?
+                WHERE id = %s AND user_id = %s
                 """,
                 (cred_id, user_id)
             )

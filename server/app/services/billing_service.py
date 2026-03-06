@@ -105,7 +105,7 @@ class BillingService:
             with get_db_connection() as db:
                 cur = db.cursor()
                 cur.execute(
-                    "SELECT credits FROM ml_users WHERE id = ?",
+                    "SELECT credits FROM ml_users WHERE id = %s",
                     (user_id,)
                 )
                 row = cur.fetchone()
@@ -136,7 +136,7 @@ class BillingService:
                 except Exception:
                     pass
 
-                cur.execute("SELECT vip_expires_at FROM ml_users WHERE id = ?", (user_id,))
+                cur.execute("SELECT vip_expires_at FROM ml_users WHERE id = %s", (user_id,))
                 row = cur.fetchone()
                 cur.close()
                 
@@ -223,7 +223,7 @@ class BillingService:
                 now = datetime.now(timezone.utc)
 
                 # Read current VIP expiry to support stacking for monthly/yearly.
-                cur.execute("SELECT vip_expires_at FROM ml_users WHERE id = ?", (user_id,))
+                cur.execute("SELECT vip_expires_at FROM ml_users WHERE id = %s", (user_id,))
                 row = cur.fetchone() or {}
                 current_expires = row.get("vip_expires_at")
                 if isinstance(current_expires, str) and current_expires:
@@ -257,7 +257,7 @@ class BillingService:
                         """
                         INSERT INTO ml_membership_orders
                           (user_id, plan, price_usd, status, created_at, paid_at)
-                        VALUES (?, ?, ?, 'paid', NOW(), NOW())
+                        VALUES (%s, %s, %s, 'paid', NOW(), NOW())
                         RETURNING id
                         """,
                         (user_id, order_plan, order_price_usd),
@@ -270,7 +270,7 @@ class BillingService:
                         """
                         INSERT INTO ml_membership_orders
                           (user_id, plan, price_usd, status, created_at, paid_at)
-                        VALUES (?, ?, ?, 'paid', NOW(), NOW())
+                        VALUES (%s, %s, %s, 'paid', NOW(), NOW())
                         """,
                         (user_id, order_plan, order_price_usd),
                     )
@@ -281,11 +281,11 @@ class BillingService:
                 cur.execute(
                     """
                     UPDATE ml_users
-                    SET vip_expires_at = ?,
-                        vip_plan = ?,
-                        vip_is_lifetime = ?,
+                    SET vip_expires_at = %s,
+                        vip_plan = %s,
+                        vip_is_lifetime = %s,
                         updated_at = NOW()
-                    WHERE id = ?
+                    WHERE id = %s
                     """,
                     (vip_expires_at, vip_plan, 1 if vip_is_lifetime else 0, user_id),
                 )
@@ -306,7 +306,7 @@ class BillingService:
                                                 remark="Lifetime membership monthly credits", reference_id=order_ref)
                     try:
                         cur.execute(
-                            "UPDATE ml_users SET vip_monthly_credits_last_grant = ?, updated_at = NOW() WHERE id = ?",
+                            "UPDATE ml_users SET vip_monthly_credits_last_grant = %s, updated_at = NOW() WHERE id = %s",
                             (now, user_id),
                         )
                     except Exception:
@@ -318,9 +318,9 @@ class BillingService:
                     """
                     INSERT INTO ml_credits_log
                       (user_id, action, amount, balance_after, remark, operator_id, reference_id, created_at)
-                    VALUES (?, 'membership_purchase', 0,
-                            (SELECT credits FROM ml_users WHERE id = ?),
-                            ?, NULL, ?, NOW())
+                    VALUES (%s, 'membership_purchase', 0,
+                            (SELECT credits FROM ml_users WHERE id = %s),
+                            %s, NULL, %s, NOW())
                     """,
                     (user_id, user_id, f"Membership purchased: {plan}", order_ref),
                 )
@@ -370,17 +370,17 @@ class BillingService:
     def _add_credits_in_tx(self, cur, user_id: int, amount: int, action: str, remark: str, reference_id: str = ''):
         """Add credits within an existing DB transaction and write ml_credits_log."""
         try:
-            cur.execute("SELECT credits FROM ml_users WHERE id = ?", (user_id,))
+            cur.execute("SELECT credits FROM ml_users WHERE id = %s", (user_id,))
             row = cur.fetchone() or {}
             credits = Decimal(str(row.get("credits", 0) or 0))
             new_balance = credits + Decimal(str(amount))
 
-            cur.execute("UPDATE ml_users SET credits = ?, updated_at = NOW() WHERE id = ?", (float(new_balance), user_id))
+            cur.execute("UPDATE ml_users SET credits = %s, updated_at = NOW() WHERE id = %s", (float(new_balance), user_id))
             cur.execute(
                 """
                 INSERT INTO ml_credits_log
                   (user_id, action, amount, balance_after, remark, operator_id, reference_id, created_at)
-                VALUES (?, ?, ?, ?, ?, NULL, ?, NOW())
+                VALUES (%s, %s, %s, %s, %s, NULL, %s, NOW())
                 """,
                 (user_id, action, amount, float(new_balance), remark, reference_id),
             )
@@ -396,7 +396,7 @@ class BillingService:
                 return
 
             cur.execute(
-                "SELECT vip_is_lifetime, vip_expires_at, vip_monthly_credits_last_grant FROM ml_users WHERE id = ?",
+                "SELECT vip_is_lifetime, vip_expires_at, vip_monthly_credits_last_grant FROM ml_users WHERE id = %s",
                 (user_id,),
             )
             row = cur.fetchone() or {}
@@ -427,7 +427,7 @@ class BillingService:
             # First time: do nothing (purchase flow already grants), but set last to now if missing
             if not last:
                 cur.execute(
-                    "UPDATE ml_users SET vip_monthly_credits_last_grant = ?, updated_at = NOW() WHERE id = ?",
+                    "UPDATE ml_users SET vip_monthly_credits_last_grant = %s, updated_at = NOW() WHERE id = %s",
                     (now, user_id),
                 )
                 return
@@ -444,7 +444,7 @@ class BillingService:
             self._add_credits_in_tx(cur, user_id, total, action="membership_monthly",
                                     remark=f"Lifetime membership monthly credits x{periods}", reference_id="")
             cur.execute(
-                "UPDATE ml_users SET vip_monthly_credits_last_grant = ?, updated_at = NOW() WHERE id = ?",
+                "UPDATE ml_users SET vip_monthly_credits_last_grant = %s, updated_at = NOW() WHERE id = %s",
                 (now, user_id),
             )
         except Exception:
@@ -494,7 +494,7 @@ class BillingService:
                 
                 # Update user credits
                 cur.execute(
-                    "UPDATE ml_users SET credits = ?, updated_at = NOW() WHERE id = ?",
+                    "UPDATE ml_users SET credits = %s, updated_at = NOW() WHERE id = %s",
                     (float(new_balance), user_id)
                 )
 
@@ -504,7 +504,7 @@ class BillingService:
                     """
                     INSERT INTO ml_credits_log 
                     (user_id, action, amount, balance_after, feature, reference_id, remark, created_at)
-                    VALUES (?, 'consume', ?, ?, ?, ?, ?, NOW())
+                    VALUES (%s, 'consume', %s, %s, %s, %s, %s, NOW())
                     """,
                     (user_id, -cost, float(new_balance), feature, reference_id, f'Consume: {feature_name}')
                 )
@@ -547,7 +547,7 @@ class BillingService:
                 
                 # Update user credits
                 cur.execute(
-                    "UPDATE ml_users SET credits = ?, updated_at = NOW() WHERE id = ?",
+                    "UPDATE ml_users SET credits = %s, updated_at = NOW() WHERE id = %s",
                     (float(new_balance), user_id)
                 )
 
@@ -556,7 +556,7 @@ class BillingService:
                     """
                     INSERT INTO ml_credits_log 
                     (user_id, action, amount, balance_after, remark, operator_id, reference_id, created_at)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, NOW())
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, NOW())
                     """,
                     (user_id, action, amount, float(new_balance), remark, operator_id, reference_id)
                 )
@@ -597,7 +597,7 @@ class BillingService:
                 
                 # Update user credits
                 cur.execute(
-                    "UPDATE ml_users SET credits = ?, updated_at = NOW() WHERE id = ?",
+                    "UPDATE ml_users SET credits = %s, updated_at = NOW() WHERE id = %s",
                     (amount, user_id)
                 )
 
@@ -606,7 +606,7 @@ class BillingService:
                     """
                     INSERT INTO ml_credits_log 
                     (user_id, action, amount, balance_after, remark, operator_id, created_at)
-                    VALUES (?, 'admin_adjust', ?, ?, ?, ?, NOW())
+                    VALUES (%s, 'admin_adjust', %s, %s, %s, %s, NOW())
                     """,
                     (user_id, float(diff), amount, remark or f'Admin adjust: {old_credits} -> {amount}', operator_id)
                 )
@@ -641,7 +641,7 @@ class BillingService:
                 
                 # Update VIP expiration time
                 cur.execute(
-                    "UPDATE ml_users SET vip_expires_at = ?, updated_at = NOW() WHERE id = ?",
+                    "UPDATE ml_users SET vip_expires_at = %s, updated_at = NOW() WHERE id = %s",
                     (expires_at, user_id)
                 )
                 
@@ -652,7 +652,7 @@ class BillingService:
                     """
                     INSERT INTO ml_credits_log 
                     (user_id, action, amount, balance_after, remark, operator_id, created_at)
-                    VALUES (?, ?, 0, (SELECT credits FROM ml_users WHERE id = ?), ?, ?, NOW())
+                    VALUES (%s, %s, 0, (SELECT credits FROM ml_users WHERE id = %s), %s, %s, NOW())
                     """,
                     (user_id, action, user_id, log_remark, operator_id)
                 )
@@ -677,7 +677,7 @@ class BillingService:
                 
                 # Get total count
                 cur.execute(
-                    "SELECT COUNT(*) as count FROM ml_credits_log WHERE user_id = ?",
+                    "SELECT COUNT(*) as count FROM ml_credits_log WHERE user_id = %s",
                     (user_id,)
                 )
                 total = cur.fetchone()['count']
@@ -687,9 +687,9 @@ class BillingService:
                     """
                     SELECT id, action, amount, balance_after, feature, reference_id, remark, created_at
                     FROM ml_credits_log
-                    WHERE user_id = ?
+                    WHERE user_id = %s
                     ORDER BY created_at DESC
-                    LIMIT ? OFFSET ?
+                    LIMIT %s OFFSET %s
                     """,
                     (user_id, page_size, offset)
                 )
