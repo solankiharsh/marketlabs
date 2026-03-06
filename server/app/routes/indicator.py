@@ -185,7 +185,7 @@ def save_indicator():
         description = (data.get("description") or "").strip()
         publish_to_community = 1 if data.get("publishToCommunity") or data.get("publish_to_community") else 0
         pricing_type = (data.get("pricingType") or data.get("pricing_type") or "free").strip() or "free"
-        vip_free = 1 if (data.get("vipFree") or data.get("vip_free")) else 0
+        vip_free = bool(data.get("vipFree") or data.get("vip_free"))
         try:
             price = float(data.get("price") or 0)
         except Exception:
