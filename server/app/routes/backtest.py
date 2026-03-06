@@ -85,12 +85,12 @@ def _normalize_lang(lang: str | None) -> str:
     return l2 if l2 in supported else "en-US"
 
 
-@backtest_bp.route('/backtest/precision-info', methods=['GET'])
+@backtest_bp.route('/backtest/precision-info', methods=['GET', 'POST'])
 def get_precision_info():
     """
     Get backtest precision info (for frontend hint).
 
-    Params (Query String):
+    Params:
         market: Market type
         startDate: Start date (YYYY-MM-DD)
         endDate: End date (YYYY-MM-DD)
@@ -99,10 +99,16 @@ def get_precision_info():
         Precision info: recommended execution timeframe and estimated kline count.
     """
     try:
-        # Use request.args for GET params
-        market = request.args.get('market', 'crypto')
-        start_date_str = request.args.get('startDate', '')
-        end_date_str = request.args.get('endDate', '')
+        # Support both GET query params and POST JSON body
+        if request.method == 'POST' and request.is_json:
+            data = request.get_json() or {}
+            market = data.get('market', 'crypto')
+            start_date_str = data.get('startDate', '')
+            end_date_str = data.get('endDate', '')
+        else:
+            market = request.args.get('market', 'crypto')
+            start_date_str = request.args.get('startDate', '')
+            end_date_str = request.args.get('endDate', '')
         
         if not start_date_str or not end_date_str:
             return jsonify({'code': 0, 'msg': 'startDate and endDate are required'}), 400

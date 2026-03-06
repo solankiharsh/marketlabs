@@ -1603,25 +1603,25 @@ def _analyze_opportunities_crypto(opportunities: list):
         reason = ""
         impact = "neutral"
 
-        if change > 15:
+        if change > 10:
             signal = "overbought"
             strength = "strong"
             reason = f"24h up {change:.1f}%, 7d up {change_7d:.1f}%, short-term overbought risk"
             impact = "bearish"
-        elif change > 8:
+        elif change > 3:
             signal = "bullish_momentum"
-            strength = "medium"
-            reason = f"24h up {change:.1f}%, strong upward momentum"
+            strength = "strong" if change > 6 else "medium"
+            reason = f"24h up {change:.1f}%, upward momentum"
             impact = "bullish"
-        elif change < -15:
+        elif change < -10:
             signal = "oversold"
             strength = "strong"
             reason = f"24h down {abs(change):.1f}%, potential oversold bounce"
             impact = "bullish"
-        elif change < -8:
+        elif change < -3:
             signal = "bearish_momentum"
-            strength = "medium"
-            reason = f"24h down {abs(change):.1f}%, clear downtrend"
+            strength = "strong" if change < -6 else "medium"
+            reason = f"24h down {abs(change):.1f}%, downtrend"
             impact = "bearish"
 
         if signal:
@@ -1659,25 +1659,25 @@ def _analyze_opportunities_stocks(opportunities: list):
         impact = "neutral"
 
         # US stocks: smaller thresholds than crypto
-        if change > 5:
+        if change > 4:
             signal = "overbought"
             strength = "strong"
             reason = f"Daily up {change:.1f}%, large short-term gain, watch for pullback"
             impact = "bearish"
-        elif change > 3:
+        elif change > 1.5:
             signal = "bullish_momentum"
-            strength = "medium"
-            reason = f"Daily up {change:.1f}%, strong upward momentum"
+            strength = "strong" if change > 3 else "medium"
+            reason = f"Daily up {change:.1f}%, upward momentum"
             impact = "bullish"
-        elif change < -5:
+        elif change < -4:
             signal = "oversold"
             strength = "strong"
             reason = f"Daily down {abs(change):.1f}%, potential oversold bounce"
             impact = "bullish"
-        elif change < -3:
+        elif change < -1.5:
             signal = "bearish_momentum"
-            strength = "medium"
-            reason = f"Daily down {abs(change):.1f}%, clear downtrend"
+            strength = "strong" if change < -3 else "medium"
+            reason = f"Daily down {abs(change):.1f}%, downtrend"
             impact = "bearish"
 
         if signal:
@@ -1713,26 +1713,26 @@ def _analyze_opportunities_forex(opportunities: list):
         reason = ""
         impact = "neutral"
 
-        # Forex: even smaller thresholds
-        if change > 1.5:
+        # Forex: tighter thresholds (FX moves are smaller)
+        if change > 1.0:
             signal = "overbought"
             strength = "strong"
             reason = f"Daily up {change:.2f}%, high FX volatility, watch for pullback"
             impact = "bearish"
-        elif change > 0.8:
+        elif change > 0.3:
             signal = "bullish_momentum"
-            strength = "medium"
-            reason = f"Daily up {change:.2f}%, strong upward momentum"
+            strength = "strong" if change > 0.6 else "medium"
+            reason = f"Daily up {change:.2f}%, upward momentum"
             impact = "bullish"
-        elif change < -1.5:
+        elif change < -1.0:
             signal = "oversold"
             strength = "strong"
             reason = f"Daily down {abs(change):.2f}%, high FX volatility, potential bounce"
             impact = "bullish"
-        elif change < -0.8:
+        elif change < -0.3:
             signal = "bearish_momentum"
-            strength = "medium"
-            reason = f"Daily down {abs(change):.2f}%, clear downtrend"
+            strength = "strong" if change < -0.6 else "medium"
+            reason = f"Daily down {abs(change):.2f}%, downtrend"
             impact = "bearish"
 
         if signal:
