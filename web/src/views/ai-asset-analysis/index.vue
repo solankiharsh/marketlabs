@@ -118,14 +118,29 @@ export default {
     // Duplicate items for seamless infinite carousel
     carouselItems () {
       if (this.opportunities.length === 0) return []
-      // Duplicate the array so the CSS animation can loop seamlessly
-      return [...this.opportunities, ...this.opportunities]
+      // Need enough copies so the track is at least 2× the viewport width.
+      // Each card is ~200px (190 + 10 gap). Viewport is ~1400px max.
+      // We need at least ceil(1400/200) = 7 cards per "half", so duplicate
+      // enough times that one set fills the screen.
+      const cardW = 200
+      const viewportW = 1600
+      const minCards = Math.ceil(viewportW / cardW)
+      const copies = Math.max(2, Math.ceil((minCards * 2) / this.opportunities.length))
+      const result = []
+      for (let i = 0; i < copies; i++) {
+        result.push(...this.opportunities)
+      }
+      return result
     },
     oppTrackStyle () {
       // Animation duration proportional to number of items (3s per card)
-      const duration = this.opportunities.length * 3
+      const duration = this.opportunities.length * 4
+      // translateX percentage for exactly one set of items
+      const copies = this.carouselItems.length / this.opportunities.length
+      const pct = (100 / copies).toFixed(4)
       return {
-        animationDuration: duration + 's'
+        animationDuration: duration + 's',
+        '--scroll-pct': '-' + pct + '%'
       }
     }
   },
@@ -287,7 +302,7 @@ export default {
         transform: translateX(0);
       }
       100% {
-        transform: translateX(-50%);
+        transform: translateX(var(--scroll-pct, -50%));
       }
     }
 
