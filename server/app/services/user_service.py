@@ -493,26 +493,30 @@ class UserService:
         """
         try:
             with get_db_connection() as db:
+                admin_user = os.getenv('ADMIN_USER', 'marketlabs')
                 cur = db.cursor()
-                cur.execute("SELECT COUNT(*) as count FROM ml_users")
-                count = cur.fetchone()['count']
+                cur.execute("SELECT id FROM ml_users WHERE username = %s", (admin_user,))
+                existing = cur.fetchone()
                 cur.close()
-                
-                if count == 0:
-                    # Create admin using env credentials
-                    admin_user = os.getenv('ADMIN_USER', 'marketlabs')
+
+                if not existing:
+                    # Create admin — bypass create_user() validation since
+                    # ADMIN_PASSWORD may be short.
                     admin_password = os.getenv('ADMIN_PASSWORD', 'admin123')
                     admin_email = os.getenv('ADMIN_EMAIL', 'admin@example.com')
+                    password_hash = self.hash_password(admin_password)
 
-                    self.create_user({
-                        'username': admin_user,
-                        'password': admin_password,
-                        'email': admin_email,
-                        'nickname': 'Administrator',
-                        'role': 'admin',
-                        'status': 'active',
-                        'email_verified': True  # Admin email is pre-verified
-                    })
+                    cur2 = db.cursor()
+                    cur2.execute(
+                        """
+                        INSERT INTO ml_users
+                        (username, password_hash, email, nickname, role, status, email_verified, created_at, updated_at)
+                        VALUES (%s, %s, %s, 'Administrator', 'admin', 'active', TRUE, NOW(), NOW())
+                        """,
+                        (admin_user, password_hash, admin_email)
+                    )
+                    db.commit()
+                    cur2.close()
                     logger.info(f"Created admin user: {admin_user} ({admin_email})")
         except Exception as e:
             logger.error(f"ensure_admin_exists failed: {e}")
