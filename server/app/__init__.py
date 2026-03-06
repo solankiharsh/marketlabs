@@ -239,12 +239,47 @@ def create_app(config_name='default'):
     
     from app.routes import register_routes
     register_routes(app)
-    
+
+    # Serve pre-built frontend from web/dist/ (single-binary deploy).
+    # In dev mode the Vue CLI dev server handles this; in production Flask serves
+    # the static build so no separate web server or Node.js is needed.
+    _serve_frontend(app)
+
     # Startup hooks.
     with app.app_context():
         start_pending_order_worker()
         start_portfolio_monitor()
         restore_running_strategies()
-    
+
     return app
+
+
+def _serve_frontend(app):
+    """Serve the Vue SPA from web/dist/ if it exists (production deploy)."""
+    import os
+    from flask import send_from_directory
+
+    # Look for dist/ relative to server/ dir (../web/dist) or as a sibling copy (dist/)
+    server_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    dist_dir = os.path.join(server_dir, 'dist')
+    if not os.path.isdir(dist_dir):
+        dist_dir = os.path.join(os.path.dirname(server_dir), 'web', 'dist')
+    if not os.path.isdir(dist_dir):
+        return  # No dist found — dev mode, frontend served by Vue CLI
+
+    logger.info(f"Serving frontend from {dist_dir}")
+
+    @app.route('/', defaults={'path': ''})
+    @app.route('/<path:path>')
+    def serve_frontend(path):
+        # Never intercept API calls
+        if path.startswith('api/'):
+            from flask import abort
+            abort(404)
+        # If the path matches a real file in dist/, serve it
+        full = os.path.join(dist_dir, path)
+        if path and os.path.isfile(full):
+            return send_from_directory(dist_dir, path)
+        # Otherwise serve index.html (SPA client-side routing)
+        return send_from_directory(dist_dir, 'index.html')
 
