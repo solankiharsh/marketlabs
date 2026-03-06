@@ -205,6 +205,17 @@ For Vue dev server:
 gunicorn -c gunicorn_config.py "run:app"
 ```
 
+The config binds to `PORT` when set (e.g. Railway) and caps workers to reduce Postgres connections.
+
+## Railway: Healthcheck and Postgres
+
+- **Healthcheck**: The app binds to `0.0.0.0:$PORT` when `PORT` is set, so Railway’s healthcheck can reach `/health` or `/api/health`.
+- **Postgres reset and fresh migrations**: After resetting Postgres in the Railway dashboard (or starting with a new DB), run the schema once:
+  ```bash
+  railway run python scripts/run_migrations.py
+  ```
+  Or from repo root: `cd server && python scripts/run_migrations.py` (with `DATABASE_URL` in `.env`). This applies `migrations/init.sql`. The app then creates the admin user on first request via `ensure_admin_exists()`.
+
 ## Troubleshooting
 
 - **Database connection failed**: Check `DATABASE_URL` format and PostgreSQL service status

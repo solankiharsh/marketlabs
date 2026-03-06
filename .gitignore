@@ -29,7 +29,6 @@ __pycache__/
 *.py[cod]
 *$py.class
 *.egg-info/
-/dist/
 build/
 *.egg
 .eggs/
@@ -38,7 +37,7 @@ venv/
 env/
 
 # ========================
-# Node / Next.js (web)
+# Node / Web Frontend
 # ========================
 node_modules/
 web/.next/
@@ -48,6 +47,22 @@ yarn-debug.log*
 yarn-error.log*
 package-lock.json
 yarn.lock
+
+# Frontend source — only the pre-built dist/ is deployed
+web/src/
+web/public/
+web/tests/
+web/babel.config.js
+web/vue.config.js
+web/jsconfig.json
+web/package.json
+web/package-lock.json
+web/Dockerfile
+web/deploy/
+
+# Keep the built frontend assets
+!web/dist/
+!server/dist/
 
 # ========================
 # Logs & Runtime Data

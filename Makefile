@@ -7,7 +7,7 @@ BACKEND_ENV_EXAMPLE := server/env.example
 # Homebrew Postgres paths (auto-detect version)
 PG_BIN := $(shell for v in 17 16 15 14; do p="/opt/homebrew/opt/postgresql@$$v/bin"; [ -x "$$p/pg_isready" ] && echo "$$p" && break; done)
 
-.PHONY: help setup dev dev-backend dev-web postgres-start postgres-stop postgres-status postgres-create-db migrate seed-default-avatar rename-admin-username
+.PHONY: help setup dev dev-backend dev-web build-web postgres-start postgres-stop postgres-status postgres-create-db migrate seed-default-avatar rename-admin-username
 
 help:
 	@echo "MarketLabs — AI-Native Quantitative Trading Platform"
@@ -20,6 +20,8 @@ help:
 	@echo "  make postgres-stop   — Stop Homebrew PostgreSQL"
 	@echo "  make postgres-status — Check PostgreSQL status"
 	@echo "  make postgres-create-db — Create marketlabs user + database"
+	@echo ""
+	@echo "  make build-web    — Build Vue frontend into server/dist/"
 	@echo ""
 	@echo "  make setup        — Copy env.example → .env (if missing)"
 	@echo "  make seed-default-avatar   — Set default avatar in DB"
@@ -133,6 +135,20 @@ dev: setup
 		if [ ! -d web/node_modules ]; then (cd web && npm install); fi; \
 		(cd web && npm run serve); \
 		kill $$BACKEND_PID 2>/dev/null || true
+
+# --- Build ---
+
+build-web:
+	@echo "Building Vue frontend..."
+	@if [ ! -d web/node_modules ]; then \
+		echo "Installing web dependencies..."; \
+		cd web && . $$HOME/.nvm/nvm.sh && nvm use 20 && npm install --legacy-peer-deps; \
+	fi
+	@cd web && . $$HOME/.nvm/nvm.sh && nvm use 20 && npm run build
+	@echo "Copying dist to server/ for deployment..."
+	@rm -rf server/dist
+	@cp -r web/dist server/dist
+	@echo "Build complete. server/dist/ ready for deployment."
 
 # --- DB Migrations ---
 
