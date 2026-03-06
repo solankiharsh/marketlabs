@@ -1,9 +1,9 @@
 """
-Config module: unified export of all configuration.
+Configuration module for the server application.
 """
 from app.config.settings import Config
 from app.config.api_keys import APIKeys
-from app.config.database import RedisConfig, CacheConfig
+from app.config.database import RedisConfig, SQLiteConfig, CacheConfig
 from app.config.data_sources import (
     DataSourceConfig,
     FinnhubConfig,
@@ -14,14 +14,15 @@ from app.config.data_sources import (
 )
 
 __all__ = [
-    # Main config
+    # Main configuration
     'Config',
     
     # API keys
     'APIKeys',
     
-    # DB / cache
+    # Database/cache
     'RedisConfig',
+    'SQLiteConfig',
     'CacheConfig',
     
     # Data sources

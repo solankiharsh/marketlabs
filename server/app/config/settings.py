@@ -4,8 +4,8 @@ Application main configuration.
 import os
 
 class MetaConfig(type):
-    # ==================== Service ====================
-    # Host/port/debug from env or CLI; avoid reading from DB
+    # ==================== Service configuration ====================
+    # Service startup parameters are usually determined by environment variables or command line arguments, not recommended to read from database
     
     @property
     def HOST(cls):
@@ -13,8 +13,7 @@ class MetaConfig(type):
 
     @property
     def PORT(cls):
-        # Railway, Heroku, etc. set PORT; use it when present so the proxy can reach the app
-        return int(os.getenv('PORT') or os.getenv('PYTHON_API_PORT', 5000))
+        return int(os.getenv('PYTHON_API_PORT', 5000))
 
     @property
     def DEBUG(cls):
@@ -22,27 +21,27 @@ class MetaConfig(type):
 
     @property
     def APP_NAME(cls):
-        return 'Zing Python API'
+        return 'MarketLabs Python API'
 
     @property
     def VERSION(cls):
         return '2.0.0'
 
-    # ==================== Auth ====================
+    # ==================== Authentication configuration ====================
     @property
     def SECRET_KEY(cls):
-        return os.getenv('SECRET_KEY', 'zing-secret-key-change-me')
+        return os.getenv('SECRET_KEY', 'marketlabs-secret-key-change-me')
 
     @property
     def ADMIN_USER(cls):
-        return os.getenv('ADMIN_USER', 'zing')
+        return os.getenv('ADMIN_USER', 'marketlabs')
 
     @property
     def ADMIN_PASSWORD(cls):
         return os.getenv('ADMIN_PASSWORD', '123456')
 
-    # ==================== Logging ====================
-    # Log config needed at startup; keep as env vars
+    # ==================== Logging configuration ====================
+    # Logging configuration is usually required at the earliest stage of application startup, it is recommended to keep environment variables
     
     @property
     def LOG_LEVEL(cls):
@@ -64,7 +63,7 @@ class MetaConfig(type):
     def LOG_BACKUP_COUNT(cls):
         return int(os.getenv('LOG_BACKUP_COUNT', 5))
 
-    # ==================== Security ====================
+    # ==================== Security configuration ====================
 
     @property
     def CORS_ORIGINS(cls):
@@ -78,7 +77,7 @@ class MetaConfig(type):
         val = load_addon_config().get('app', {}).get('rate_limit')
         return int(val) if val is not None else int(os.getenv('RATE_LIMIT', 100))
 
-    # ==================== Feature flags ====================
+    # ==================== Feature switches ====================
 
     @property
     def ENABLE_CACHE(cls):
@@ -106,9 +105,9 @@ class MetaConfig(type):
 
 
 class Config(metaclass=MetaConfig):
-    """Application config."""
-
+    """Application configuration class"""
+    
     @classmethod
     def get_log_path(cls) -> str:
-        """Return full path to log file."""
+        """Get full path to log file"""
         return os.path.join(cls.LOG_DIR, cls.LOG_FILE)

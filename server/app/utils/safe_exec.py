@@ -1,6 +1,6 @@
 """
-Safe code execution utilities.
-Provides timeout, resource limits, and sandboxing.
+Safe code execution utility
+Provides timeout, resource limits, and sandboxed environment
 """
 import signal
 import sys
@@ -16,53 +16,55 @@ logger = get_logger(__name__)
 
 
 class TimeoutError(Exception):
-    """Code execution timeout."""
+    """Code execution timeout exception"""
     pass
 
 
 @contextmanager
 def timeout_context(seconds: int):
     """
-    Code execution timeout context manager.
+    Code execution timeout context manager
 
-    Notes:
-    - Only effective on Unix/Linux
-    - Only effective in main thread; other threads have no timeout
-    - On Windows, timeout is not enforced
+    Note:
+    - Only effective on Unix/Linux systems
+    - Only effective in the main thread; non-main threads fall back to no timeout limit
+    - Falls back to no timeout limit on Windows
 
     Args:
         seconds: Timeout in seconds
     """
-    # Check if we're in the main thread
+    # Check if running in the main thread
     is_main_thread = threading.current_thread() is threading.main_thread()
     
     if sys.platform == 'win32':
-        # Windows does not support signal.alarm; log warning only
+        # Windows does not support signal.alarm, can only log a warning
         logger.warning("Windows does not support signal-based timeouts; execution time limits may not work")
         yield
         return
     
     if not is_main_thread:
-        # Non-main thread cannot use signal; no timeout enforced
+        # Non-main threads cannot use signal; log warning but do not enforce timeout
+        # logger.warning(f"Running in non-main thread (thread: {threading.current_thread().name}), "
+        #               f"signal timeout unavailable, code execution time cannot be limited")
         yield
         return
-
+    
     def timeout_handler(signum, frame):
-        raise TimeoutError(f"Code execution timed out (>{seconds}s)")
-
+        raise TimeoutError(f"Code execution timed out (exceeded {seconds} seconds)")
+    
     try:
         # Set signal handler
         old_handler = signal.signal(signal.SIGALRM, timeout_handler)
         signal.alarm(seconds)
-
+        
         try:
             yield
         finally:
-            # Restore previous signal handler
+            # Restore the original signal handler
             signal.alarm(0)
             signal.signal(signal.SIGALRM, old_handler)
     except ValueError as e:
-        # If signal setup fails, log and continue without timeout
+        # If signal setup fails (e.g., in certain environments), log warning but do not interrupt execution
         logger.warning(f"Failed to set signal timeout: {str(e)}; execution will continue without timeout enforcement")
         yield
 
@@ -75,31 +77,35 @@ def safe_exec_code(
     max_memory_mb: Optional[int] = None
 ) -> Dict[str, Any]:
     """
-    Safely execute Python code.
+    Safely execute Python code
 
     Args:
         code: Python code to execute
-        exec_globals: Global namespace dict
-        exec_locals: Local namespace dict (uses exec_globals if None)
-        timeout: Timeout in seconds (default 30)
-        max_memory_mb: Max memory in MB (default 500)
+        exec_globals: Global variables dict
+        exec_locals: Local variables dict (if None, uses exec_globals)
+        timeout: Timeout in seconds, default 30s
+        max_memory_mb: Maximum memory limit in MB, default 500MB
 
     Returns:
-        Dict with: success (bool), error (str or None), result (Any)
+        Execution result dict containing:
+        - success: bool, whether execution succeeded
+        - error: str, error message (if failed)
+        - result: Any, execution result (if any)
 
     Raises:
-        TimeoutError: If execution exceeds timeout
+        TimeoutError: If code execution times out
     """
     if exec_locals is None:
         exec_locals = exec_globals
     
-    # Set memory limit if supported
+    # Set memory limit (if supported)
     if max_memory_mb is None:
-        max_memory_mb = 500  # default 500MB
-
+        max_memory_mb = 500  # Default 500MB
+    
     try:
-        # resource.setrlimit is process-wide and affects the whole API process.
-        # A global 500MB limit can break parallel strategies/threads. Only set when SAFE_EXEC_ENABLE_RLIMIT is enabled.
+        # Note: resource.setrlimit is process-level and affects the entire API process.
+        # Previously the global 500MB limit could prevent parallel strategies/threads from allocating memory.
+        # Only set when SAFE_EXEC_ENABLE_RLIMIT is explicitly enabled.
         if sys.platform != 'win32' and os.getenv('SAFE_EXEC_ENABLE_RLIMIT', 'false').lower() == 'true':
             try:
                 import resource
@@ -111,7 +117,8 @@ def safe_exec_code(
         else:
             logger.debug("No resource memory limit (SAFE_EXEC_ENABLE_RLIMIT disabled or unsupported platform)")
         
-        # On Windows, timeout_context does not enforce limit but logs a warning
+        # On Windows, timeout_context does not actually enforce time limits
+        # but will log a warning
         with timeout_context(timeout):
             exec(code, exec_globals, exec_locals)
         
@@ -122,7 +129,7 @@ def safe_exec_code(
         }
         
     except MemoryError as e:
-        error_msg = f"Code execution out of memory (limit {max_memory_mb}MB)"
+        error_msg = f"Code execution out of memory (exceeded {max_memory_mb}MB limit)"
         logger.error(f"Code execution out of memory (limit={max_memory_mb}MB)")
         return {
             'success': False,
@@ -150,9 +157,9 @@ def safe_exec_code(
 
 def validate_code_safety(code: str) -> Tuple[bool, Optional[str]]:
     """
-    Validate code safety (basic checks).
+    Validate code safety (basic check)
 
-    Checks for dangerous function calls or imports.
+    Check whether the code contains dangerous function calls or imports
 
     Args:
         code: Python code to check
@@ -201,7 +208,7 @@ def validate_code_safety(code: str) -> Tuple[bool, Optional[str]]:
         r'\bimport\s+multiprocessing\b',
         r'\bimport\s+threading\b',
         r'\bimport\s+concurrent\b',
-        # Reflection and metaprogramming (can bypass restrictions)
+        # Reflection and metaprogramming (could be used to bypass restrictions)
         r'\bgetattr\s*\(.*__import__',
         r'\bgetattr\s*\(.*eval',
         r'\bgetattr\s*\(.*exec',
@@ -212,7 +219,7 @@ def validate_code_safety(code: str) -> Tuple[bool, Optional[str]]:
         r'\bglobals\s*\(',
         r'\blocals\s*\(',
         r'\bdir\s*\(',
-        r'\btype\s*\(.*\)\s*\(',  # type() can create new types
+        r'\btype\s*\(.*\)\s*\(',  # type() could be used to create new types
         r'\b__class__\b',
         r'\b__bases__\b',
         r'\b__subclasses__\b',
@@ -227,16 +234,16 @@ def validate_code_safety(code: str) -> Tuple[bool, Optional[str]]:
         r'\bimp\b',
     ]
     
-    # Check for dangerous patterns
+    # Check if the code contains dangerous patterns
     for pattern in dangerous_patterns:
         if re.search(pattern, code):
             return False, f"Dangerous code pattern detected: {pattern}"
-
-    # Parse AST and check for dangerous nodes
+    
+    # Try parsing AST to check for dangerous nodes
     try:
         tree = ast.parse(code)
         
-        # Dangerous modules (extended)
+        # Dangerous modules list (extended)
         dangerous_modules = [
             'os', 'sys', 'subprocess', 'pymysql', 'sqlite3',
             'requests', 'urllib', 'http', 'socket', 'ftplib', 'telnetlib',
@@ -245,10 +252,11 @@ def validate_code_safety(code: str) -> Tuple[bool, Optional[str]]:
             'importlib', 'imp', 'builtins'
         ]
         
-        # Dangerous functions (extended). hasattr is safe (check-only).
+        # Dangerous functions list (extended)
+        # Note: hasattr is safe, only used for attribute checking, not access
         dangerous_functions = [
             'eval', 'exec', 'compile', '__import__',
-            'getattr', 'setattr', 'delattr',
+            'getattr', 'setattr', 'delattr',  # hasattr removed, it is safe
             'globals', 'locals', 'vars', 'dir', 'type'
         ]
         
@@ -259,46 +267,46 @@ def validate_code_safety(code: str) -> Tuple[bool, Optional[str]]:
                 if isinstance(node.func, ast.Name):
                     func_name = node.func.id
                     if func_name in dangerous_functions:
-                        return False, f"Dangerous function call: {func_name}()"
-
-                # Check for os.system etc.
+                        return False, f"Dangerous function call detected: {func_name}()"
+                
+                # Check for calls like os.system
                 if isinstance(node.func, ast.Attribute):
                     if isinstance(node.func.value, ast.Name):
                         if node.func.value.id in dangerous_modules:
-                            return False, f"Dangerous module call: {node.func.value.id}.{node.func.attr}"
-
-                    # Check for getattr(builtins, '__import__') etc. bypass
+                            return False, f"Dangerous module call detected: {node.func.value.id}.{node.func.attr}"
+                    
+                    # Check for bypass patterns like getattr(builtins, '__import__')
                     if isinstance(node.func, ast.Name) and node.func.id == 'getattr':
                         # Check getattr arguments
                         if len(node.args) >= 2:
                             if isinstance(node.args[0], ast.Name) and node.args[0].id in ['builtins', '__builtins__']:
                                 if isinstance(node.args[1], ast.Constant) and node.args[1].value in dangerous_functions:
-                                    return False, f"getattr bypass detected: getattr({node.args[0].id}, '{node.args[1].value}')"
-
-        # Check imports
+                                    return False, f"Bypass via getattr detected: getattr({node.args[0].id}, '{node.args[1].value}')"
+        
+        # Check import statements
         for node in ast.walk(tree):
             if isinstance(node, ast.Import):
                 for alias in node.names:
                     if alias.name in dangerous_modules:
-                        return False, f"Dangerous module import: {alias.name}"
-
+                        return False, f"Dangerous module import detected: {alias.name}"
+            
             if isinstance(node, ast.ImportFrom):
                 if node.module and node.module.split('.')[0] in dangerous_modules:
-                    return False, f"Dangerous module import: {node.module}"
-
-        # Check for __builtins__ access
+                    return False, f"Dangerous module import detected: {node.module}"
+        
+        # Check for attempts to access __builtins__
         for node in ast.walk(tree):
             if isinstance(node, ast.Attribute):
                 if isinstance(node.attr, str) and node.attr.startswith('__') and node.attr.endswith('__'):
                     if node.attr in ['__builtins__', '__import__', '__class__', '__bases__', '__subclasses__', '__mro__']:
-                        # Check dangerous context
+                        # Check if used in a dangerous context
                         if isinstance(node.value, ast.Name) and node.value.id in ['builtins', '__builtins__']:
-                            return False, f"Dangerous attribute access: {node.value.id}.{node.attr}"
-
+                            return False, f"Dangerous attribute access detected: {node.value.id}.{node.attr}"
+        
     except SyntaxError as e:
-        return False, f"Syntax error: {str(e)}"
+        return False, f"Code syntax error: {str(e)}"
     except Exception as e:
-        # If AST parse fails, log and allow (e.g. incomplete code)
+        # If AST parsing fails, log warning but allow to continue (code may be incomplete)
         logger.warning(f"AST parse failed; skipping safety checks: {str(e)}")
     
     return True, None

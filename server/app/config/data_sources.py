@@ -1,5 +1,5 @@
 """
-数据源配置
+Data source configuration.
 """
 import os
 
@@ -24,7 +24,7 @@ class MetaDataSourceConfig(type):
 
 
 class DataSourceConfig(metaclass=MetaDataSourceConfig):
-    """数据源通用配置"""
+    """Generic data source configuration"""
     pass
 
 
@@ -51,7 +51,7 @@ class MetaFinnhubConfig(type):
 
 
 class FinnhubConfig(metaclass=MetaFinnhubConfig):
-    """Finnhub 数据源配置"""
+    """Finnhub data source configuration"""
     pass
 
 
@@ -68,7 +68,7 @@ class MetaTiingoConfig(type):
 
 
 class TiingoConfig(metaclass=MetaTiingoConfig):
-    """Tiingo 数据源配置"""
+    """Tiingo data source configuration"""
     pass
 
 
@@ -94,7 +94,7 @@ class MetaYFinanceConfig(type):
 
 
 class YFinanceConfig(metaclass=MetaYFinanceConfig):
-    """Yahoo Finance 数据源配置"""
+    """Yahoo Finance data source configuration"""
     pass
 
 
@@ -129,18 +129,6 @@ class MetaCCXTConfig(type):
         }
 
     @property
-    def API_KEY(cls):
-        from app.utils.config_loader import load_addon_config
-        val = load_addon_config().get('ccxt', {}).get('api_key')
-        return (val or os.getenv('CCXT_API_KEY') or '').strip()
-
-    @property
-    def SECRET(cls):
-        from app.utils.config_loader import load_addon_config
-        val = load_addon_config().get('ccxt', {}).get('secret')
-        return (val or os.getenv('CCXT_SECRET') or '').strip()
-
-    @property
     def PROXY(cls):
         from app.utils.config_loader import load_addon_config
         val = load_addon_config().get('ccxt', {}).get('proxy')
@@ -152,7 +140,7 @@ class MetaCCXTConfig(type):
         if ccxt_proxy:
             return ccxt_proxy
 
-        # 2) Local proxy helpers from server/.env
+        # 2) Local proxy helpers from backend_api_python/.env
         # PROXY_URL has the highest priority if provided.
         proxy_url = (os.getenv('PROXY_URL') or '').strip()
         if proxy_url:
@@ -175,7 +163,7 @@ class MetaCCXTConfig(type):
 
 
 class CCXTConfig(metaclass=MetaCCXTConfig):
-    """CCXT 加密货币数据源配置"""
+    """CCXT cryptocurrency data source configuration"""
     pass
 
 
@@ -195,5 +183,5 @@ class MetaAkshareConfig(type):
 
 
 class AkshareConfig(metaclass=MetaAkshareConfig):
-    """Akshare 数据源配置"""
+    """Akshare data source configuration"""
     pass

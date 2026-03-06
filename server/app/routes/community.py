@@ -1,7 +1,7 @@
 """
-Community APIs - 指标社区接口
+Community APIs - Indicator Community Endpoints
 
-提供指标市场、购买、评论等功能的 REST API。
+REST API for indicator marketplace, purchases, comments, and more.
 """
 
 from flask import Blueprint, jsonify, request, g
@@ -16,20 +16,20 @@ community_bp = Blueprint("community", __name__)
 
 
 # ==========================================
-# 指标市场
+# Indicator Marketplace
 # ==========================================
 
 @community_bp.route("/indicators", methods=["GET"])
 @login_required
 def get_market_indicators():
     """
-    获取市场指标列表
-    
+    Get market indicator list.
+
     Query params:
-        page: 页码 (default 1)
-        page_size: 每页数量 (default 12)
-        keyword: 搜索关键词
-        pricing_type: 'free' / 'paid' / 空(全部)
+        page: Page number (default 1)
+        page_size: Items per page (default 12)
+        keyword: Search keyword
+        pricing_type: 'free' / 'paid' / empty (all)
         sort_by: 'newest' / 'hot' / 'price_asc' / 'price_desc' / 'rating'
     """
     try:
@@ -39,7 +39,7 @@ def get_market_indicators():
         pricing_type = request.args.get('pricing_type', '').strip() or None
         sort_by = request.args.get('sort_by', 'newest').strip()
         
-        # 限制每页数量
+        # Limit page size
         page_size = min(max(page_size, 1), 50)
         
         service = get_community_service()
@@ -62,7 +62,7 @@ def get_market_indicators():
 @community_bp.route("/indicators/<int:indicator_id>", methods=["GET"])
 @login_required
 def get_indicator_detail(indicator_id: int):
-    """获取指标详情"""
+    """Get indicator details."""
     try:
         service = get_community_service()
         result = service.get_indicator_detail(indicator_id, user_id=g.user_id)
@@ -78,20 +78,20 @@ def get_indicator_detail(indicator_id: int):
 
 
 # ==========================================
-# 购买功能
+# Purchase Features
 # ==========================================
 
 @community_bp.route("/indicators/<int:indicator_id>/purchase", methods=["POST"])
 @login_required
 def purchase_indicator(indicator_id: int):
     """
-    购买指标
-    
-    会自动：
-    1. 检查积分是否充足
-    2. 扣除买家积分，增加卖家积分
-    3. 创建购买记录
-    4. 复制指标到买家账户
+    Purchase an indicator.
+
+    Automatically:
+    1. Check if the buyer has sufficient credits
+    2. Deduct credits from buyer, add credits to seller
+    3. Create a purchase record
+    4. Copy the indicator to the buyer's account
     """
     try:
         service = get_community_service()
@@ -113,7 +113,7 @@ def purchase_indicator(indicator_id: int):
 @community_bp.route("/my-purchases", methods=["GET"])
 @login_required
 def get_my_purchases():
-    """获取我购买的指标列表"""
+    """Get list of indicators purchased by the current user."""
     try:
         page = int(request.args.get('page', 1))
         page_size = int(request.args.get('page_size', 20))
@@ -134,13 +134,13 @@ def get_my_purchases():
 
 
 # ==========================================
-# 评论功能
+# Comment Features
 # ==========================================
 
 @community_bp.route("/indicators/<int:indicator_id>/comments", methods=["GET"])
 @login_required
 def get_comments(indicator_id: int):
-    """获取指标评论列表"""
+    """Get list of comments for an indicator."""
     try:
         page = int(request.args.get('page', 1))
         page_size = int(request.args.get('page_size', 20))
@@ -164,13 +164,13 @@ def get_comments(indicator_id: int):
 @login_required
 def add_comment(indicator_id: int):
     """
-    添加评论
-    
+    Add a comment.
+
     Request body:
-        rating: 1-5 星评分
-        content: 评论内容（可选，最多500字）
-    
-    注意：只有购买过的用户可以评论，且只能评论一次
+        rating: 1-5 star rating
+        content: Comment text (optional, max 500 characters)
+
+    Note: Only users who have purchased the indicator can comment, and only once.
     """
     try:
         data = request.get_json() or {}
@@ -199,11 +199,11 @@ def add_comment(indicator_id: int):
 @login_required
 def update_comment(indicator_id: int, comment_id: int):
     """
-    更新评论（只能修改自己的评论）
-    
+    Update a comment (can only edit your own comment).
+
     Request body:
-        rating: 1-5 星评分
-        content: 评论内容（最多500字）
+        rating: 1-5 star rating
+        content: Comment text (max 500 characters)
     """
     try:
         data = request.get_json() or {}
@@ -232,7 +232,7 @@ def update_comment(indicator_id: int, comment_id: int):
 @community_bp.route("/indicators/<int:indicator_id>/my-comment", methods=["GET"])
 @login_required
 def get_my_comment(indicator_id: int):
-    """获取当前用户对指定指标的评论（用于编辑）"""
+    """Get the current user's comment for a specific indicator (for editing)."""
     try:
         service = get_community_service()
         result = service.get_user_comment(
@@ -248,13 +248,13 @@ def get_my_comment(indicator_id: int):
 
 
 # ==========================================
-# 实盘表现
+# Live Performance
 # ==========================================
 
 @community_bp.route("/indicators/<int:indicator_id>/performance", methods=["GET"])
 @login_required
 def get_indicator_performance(indicator_id: int):
-    """获取指标的实盘表现统计"""
+    """Get live trading performance statistics for an indicator."""
     try:
         service = get_community_service()
         result = service.get_indicator_performance(indicator_id)
@@ -267,11 +267,11 @@ def get_indicator_performance(indicator_id: int):
 
 
 # ==========================================
-# 管理员审核功能
+# Admin Review Features
 # ==========================================
 
 def _is_admin():
-    """检查当前用户是否是管理员"""
+    """Check if the current user is an admin."""
     role = getattr(g, 'user_role', None)
     return role == 'admin'
 
@@ -280,11 +280,11 @@ def _is_admin():
 @login_required
 def get_pending_indicators():
     """
-    获取待审核的指标列表（管理员专用）
-    
+    Get list of indicators pending review (admin only).
+
     Query params:
-        page: 页码 (default 1)
-        page_size: 每页数量 (default 20)
+        page: Page number (default 1)
+        page_size: Items per page (default 20)
         review_status: 'pending' / 'approved' / 'rejected' / 'all'
     """
     try:
@@ -313,7 +313,7 @@ def get_pending_indicators():
 @community_bp.route("/admin/review-stats", methods=["GET"])
 @login_required
 def get_review_stats():
-    """获取审核统计数据（管理员专用）"""
+    """Get review statistics (admin only)."""
     try:
         if not _is_admin():
             return jsonify({'code': 0, 'msg': 'admin_required', 'data': None}), 403
@@ -332,11 +332,11 @@ def get_review_stats():
 @login_required
 def review_indicator(indicator_id: int):
     """
-    审核指标（管理员专用）
-    
+    Review an indicator (admin only).
+
     Request body:
         action: 'approve' / 'reject'
-        note: 审核备注（可选）
+        note: Review note (optional)
     """
     try:
         if not _is_admin():
@@ -371,10 +371,10 @@ def review_indicator(indicator_id: int):
 @login_required
 def unpublish_indicator(indicator_id: int):
     """
-    下架指标（管理员专用）
-    
+    Unpublish an indicator (admin only).
+
     Request body:
-        note: 下架原因（可选）
+        note: Reason for unpublishing (optional)
     """
     try:
         if not _is_admin():
@@ -403,7 +403,7 @@ def unpublish_indicator(indicator_id: int):
 @community_bp.route("/admin/indicators/<int:indicator_id>", methods=["DELETE"])
 @login_required
 def admin_delete_indicator(indicator_id: int):
-    """删除指标（管理员专用）"""
+    """Delete an indicator (admin only)."""
     try:
         if not _is_admin():
             return jsonify({'code': 0, 'msg': 'admin_required', 'data': None}), 403

@@ -1,26 +1,62 @@
-# Zing Web
+# MarketLabs Web UI (Vue 2)
 
-Next.js frontend for the Zing platform (Dashboard, AI Asset Analysis, Indicator Analysis, Indicator Market, etc.).
+This is the MarketLabs frontend web UI built with **Vue 2** + **Ant Design Vue**. It connects to the Python backend (`server/`) through HTTP APIs to provide charts, indicators, backtests, AI analysis, and strategy management.
 
-## Local development
+> This UI is based on the open-source `ant-design-vue-pro` ecosystem, heavily adapted for MarketLabs.
 
-1. **Backend** must be running (e.g. `make dev-backend` or `python run.py` in `server`) on port 5000.
-2. From repo root: `make dev-web`  
-   Or from here: `npm install && npm run dev`  
-3. Open [http://localhost:3000](http://localhost:3000).
+## What you get
 
-Optional: copy `web/.env.example` to `web/.env.local` and set `NEXT_PUBLIC_API_URL=http://localhost:5000` (this is the default).
+- **Dashboards**: summary views and operational panels
+- **Indicator analysis**: Kline charts + indicator editing + backtest history
+- **AI analysis**: multi-agent reports (optional LLM/search, configured on backend)
+- **Trading assistant**: strategy lifecycle + positions/records (depending on backend capability)
+- **Local auth**: login with backend-configured admin credentials
 
-## Build & run (production)
+## Quick start (local development)
+
+### Prerequisites
+
+- Node.js 16+ recommended
+- Backend running at `http://localhost:5000` (see `backend_api_python/README.md`)
+
+### 1) Install dependencies
 
 ```bash
-npm ci
-npm run build
-npm start
+cd web
+npm install
 ```
 
-Set `NEXT_PUBLIC_API_URL` to your backend URL before building (e.g. for Railway or Docker).
+### 2) Start dev server
 
-## Deploy (Railway)
+```bash
+npm run serve
+```
 
-See [../docs/RAILWAY_DEPLOY.md](../docs/RAILWAY_DEPLOY.md). Use **Root Directory** `web` and set `NEXT_PUBLIC_API_URL` to the backend service URL.
+Dev server runs at `http://localhost:8000`.
+
+### 3) API proxy (important)
+
+In dev mode, this project proxies `/api/*` to the backend:
+
+- Proxy config: `web/vue.config.js`
+- Default target: `http://localhost:5000`
+
+If your backend runs on a different host/port, update `vue.config.js` accordingly.
+
+## Production build
+
+```bash
+npm run build
+```
+
+The output will be generated under `web/dist/`.
+
+## Notes
+
+- **CORS**: when using the dev proxy, you typically don’t need extra CORS config.
+- **Login**: use the credentials defined in `backend_api_python/.env` (`ADMIN_USER` / `ADMIN_PASSWORD`).
+
+## License
+
+Apache License 2.0. See repository root `LICENSE`.
+

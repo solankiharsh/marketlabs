@@ -125,7 +125,7 @@ class SecurityService:
                 cur = db.cursor()
                 cur.execute(
                     """
-                    INSERT INTO qd_login_attempts 
+                    INSERT INTO ml_login_attempts 
                     (identifier, identifier_type, success, ip_address, user_agent)
                     VALUES (?, ?, ?, ?, ?)
                     """,
@@ -163,7 +163,7 @@ class SecurityService:
                 cur.execute(
                     """
                     SELECT COUNT(*) as count, MAX(attempt_time) as last_attempt
-                    FROM qd_login_attempts
+                    FROM ml_login_attempts
                     WHERE identifier = ? AND identifier_type = ? 
                     AND success = FALSE AND attempt_time > ?
                     """,
@@ -222,7 +222,7 @@ class SecurityService:
                 cur = db.cursor()
                 cur.execute(
                     """
-                    DELETE FROM qd_login_attempts
+                    DELETE FROM ml_login_attempts
                     WHERE identifier = ? AND identifier_type = ?
                     """,
                     (identifier, identifier_type)
@@ -258,7 +258,7 @@ class SecurityService:
                 cur = db.cursor()
                 cur.execute(
                     """
-                    INSERT INTO qd_security_logs 
+                    INSERT INTO ml_security_logs 
                     (user_id, action, ip_address, user_agent, details)
                     VALUES (?, ?, ?, ?, ?)
                     """,
@@ -290,7 +290,7 @@ class SecurityService:
                 rate_limit_time = datetime.now() - timedelta(seconds=self.code_rate_limit_seconds)
                 cur.execute(
                     """
-                    SELECT COUNT(*) as count FROM qd_verification_codes
+                    SELECT COUNT(*) as count FROM ml_verification_codes
                     WHERE email = ? AND created_at > ?
                     """,
                     (email, rate_limit_time)
@@ -303,7 +303,7 @@ class SecurityService:
                 hour_ago = datetime.now() - timedelta(hours=1)
                 cur.execute(
                     """
-                    SELECT COUNT(*) as count FROM qd_verification_codes
+                    SELECT COUNT(*) as count FROM ml_verification_codes
                     WHERE ip_address = ? AND created_at > ?
                     """,
                     (ip_address, hour_ago)
@@ -370,14 +370,14 @@ class SecurityService:
                 
                 # Clean old login attempts
                 cur.execute(
-                    "DELETE FROM qd_login_attempts WHERE attempt_time < ?",
+                    "DELETE FROM ml_login_attempts WHERE attempt_time < ?",
                     (cutoff,)
                 )
                 deleted += cur.rowcount or 0
                 
                 # Clean expired verification codes
                 cur.execute(
-                    "DELETE FROM qd_verification_codes WHERE expires_at < ?",
+                    "DELETE FROM ml_verification_codes WHERE expires_at < ?",
                     (cutoff,)
                 )
                 deleted += cur.rowcount or 0

@@ -1,5 +1,5 @@
 # ============================================
-# Zing - Backend API Repository
+# MarketLabs - Backend API Repository
 # ============================================
 
 # ========================
@@ -54,7 +54,7 @@ yarn.lock
 # ========================
 *.log
 server/logs/
-server/data/zing.db
+server/data/marketlabs.db
 server/data/memory/
 
 # ========================

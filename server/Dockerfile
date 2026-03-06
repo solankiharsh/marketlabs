@@ -1,4 +1,4 @@
-# Zing Backend API Dockerfile
+# MarketLabs Backend API Dockerfile
 FROM python:3.12-slim-bookworm
 
 # Set working directory

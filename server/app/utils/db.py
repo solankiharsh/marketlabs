@@ -43,7 +43,7 @@ def init_database():
     if is_postgres_available():
         from app.utils.logger import get_logger
         logger = get_logger(__name__)
-        logger.debug("PostgreSQL connection verified")
+        logger.info("PostgreSQL connection verified")
     else:
         raise RuntimeError("Cannot connect to PostgreSQL. Check DATABASE_URL.")
 
@@ -62,5 +62,4 @@ __all__ = [
     'close_db',
     'get_db_type',
     'is_postgres',
-    'is_postgres_available',
 ]

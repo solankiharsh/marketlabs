@@ -1,5 +1,5 @@
 """
-Settings API - read and write .env configuration.
+Settings API - Read and save .env configuration
 
 Admin-only endpoints for system configuration management.
 """
@@ -14,13 +14,19 @@ logger = get_logger(__name__)
 
 settings_bp = Blueprint('settings', __name__)
 
+# .env file path
 ENV_FILE_PATH = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), '.env')
 
-# Config schema: grouped by feature; each item has key, label, type, description.
-# Only user-facing switches and API keys; host/port/debug and tuning params stay in .env.
+# Configuration schema definition (grouped) - organized by functional modules, each item includes a description
+# ---------------------------------------------------------------
+# Simplification principles:
+#   - Deployment-level configs (host/port/debug) are not exposed in UI; users set them via .env or docker-compose
+#   - Internal tuning parameters (timeout/retry/tick interval/vector dimensions etc.) use defaults and are not exposed to regular users
+#   - Only retain feature toggles and API Keys that users actually need to configure
+# ---------------------------------------------------------------
 CONFIG_SCHEMA = {
 
-    # ==================== 1. Security & Auth ====================
+    # ==================== 1. Security & Authentication ====================
     'auth': {
         'title': 'Security & Authentication',
         'icon': 'lock',
@@ -30,14 +36,14 @@ CONFIG_SCHEMA = {
                 'key': 'SECRET_KEY',
                 'label': 'Secret Key',
                 'type': 'password',
-                'default': 'zing-secret-key-change-me',
+                'default': 'marketlabs-secret-key-change-me',
                 'description': 'JWT signing secret key. MUST change in production for security'
             },
             {
                 'key': 'ADMIN_USER',
                 'label': 'Admin Username',
                 'type': 'text',
-                'default': 'zing',
+                'default': 'marketlabs',
                 'description': 'Administrator login username'
             },
             {
@@ -57,7 +63,7 @@ CONFIG_SCHEMA = {
         ]
     },
 
-    # ==================== 2. AI/LLM ====================
+    # ==================== 2. AI/LLM Configuration ====================
     'ai': {
         'title': 'AI / LLM Configuration',
         'icon': 'robot',
@@ -217,7 +223,7 @@ CONFIG_SCHEMA = {
         ]
     },
 
-    # ==================== 3. Live trading ====================
+    # ==================== 3. Live Trading ====================
     'trading': {
         'title': 'Live Trading',
         'icon': 'stock',
@@ -241,7 +247,7 @@ CONFIG_SCHEMA = {
         ]
     },
 
-    # ==================== 4. Data sources ====================
+    # ==================== 4. Data Source Configuration ====================
     'data_source': {
         'title': 'Data Sources',
         'icon': 'database',
@@ -284,7 +290,7 @@ CONFIG_SCHEMA = {
         ]
     },
 
-    # ==================== 5. Email ====================
+    # ==================== 5. Email Configuration ====================
     'email': {
         'title': 'Email (SMTP)',
         'icon': 'mail',
@@ -342,7 +348,7 @@ CONFIG_SCHEMA = {
         ]
     },
 
-    # ==================== 6. SMS ====================
+    # ==================== 6. SMS Configuration ====================
     'sms': {
         'title': 'SMS (Twilio)',
         'icon': 'phone',
@@ -397,7 +403,7 @@ CONFIG_SCHEMA = {
         ]
     },
 
-    # ==================== 8. Network proxy ====================
+    # ==================== 8. Network & Proxy ====================
     'network': {
         'title': 'Network & Proxy',
         'icon': 'global',
@@ -413,7 +419,7 @@ CONFIG_SCHEMA = {
         ]
     },
 
-    # ==================== 9. Search ====================
+    # ==================== 9. Search Configuration ====================
     'search': {
         'title': 'Web Search',
         'icon': 'search',
@@ -519,7 +525,7 @@ CONFIG_SCHEMA = {
         ]
     },
 
-    # ==================== 11. Billing ====================
+    # ==================== 11. Billing Configuration ====================
     'billing': {
         'title': 'Billing & Credits',
         'icon': 'dollar',
@@ -584,7 +590,7 @@ CONFIG_SCHEMA = {
                 'description': 'Credits granted every 30 days for lifetime members'
             },
 
-            # ===== USDT Pay (per-order address) =====
+            # ===== USDT Pay (Plan B: per-order unique address) =====
             {
                 'key': 'USDT_PAY_ENABLED',
                 'label': 'Enable USDT Pay',
@@ -694,7 +700,7 @@ CONFIG_SCHEMA = {
         ]
     },
 
-    # ==================== 12. App features ====================
+    # ==================== 12. Application ====================
     'app': {
         'title': 'Application',
         'icon': 'appstore',
@@ -720,23 +726,26 @@ CONFIG_SCHEMA = {
 
 
 def read_env_file():
-    """Read .env file into a dict."""
+    """Read the .env file."""
     env_values = {}
-
+    
     if not os.path.exists(ENV_FILE_PATH):
         logger.warning(f".env file not found at {ENV_FILE_PATH}")
         return env_values
-
+    
     try:
         with open(ENV_FILE_PATH, 'r', encoding='utf-8') as f:
             for line in f:
                 line = line.strip()
+                # Skip blank lines and comments
                 if not line or line.startswith('#'):
                     continue
+                # Parse KEY=VALUE
                 if '=' in line:
                     key, value = line.split('=', 1)
                     key = key.strip()
                     value = value.strip()
+                    # Remove surrounding quotes
                     if (value.startswith('"') and value.endswith('"')) or \
                        (value.startswith("'") and value.endswith("'")):
                         value = value[1:-1]
@@ -748,24 +757,30 @@ def read_env_file():
 
 
 def write_env_file(env_values):
-    """Write .env file, preserving comments and order where possible."""
+    """Write the .env file, preserving comments and formatting."""
     lines = []
     existing_keys = set()
-
+    
+    # Read original file to preserve formatting
     if os.path.exists(ENV_FILE_PATH):
         try:
             with open(ENV_FILE_PATH, 'r', encoding='utf-8') as f:
                 for line in f:
                     original_line = line
                     stripped = line.strip()
+                    
+                    # Preserve blank lines and comments
                     if not stripped or stripped.startswith('#'):
                         lines.append(original_line)
                         continue
+                    
+                    # Update existing keys
                     if '=' in stripped:
                         key = stripped.split('=', 1)[0].strip()
                         if key in env_values:
                             existing_keys.add(key)
                             value = env_values[key]
+                            # Wrap in quotes if value contains special characters
                             if ' ' in str(value) or '"' in str(value) or "'" in str(value):
                                 lines.append(f'{key}="{value}"\n')
                             else:
@@ -776,7 +791,8 @@ def write_env_file(env_values):
                         lines.append(original_line)
         except Exception as e:
             logger.error(f"Failed to read .env file for update: {e}")
-
+    
+    # Append new keys
     new_keys = set(env_values.keys()) - existing_keys
     if new_keys:
         if lines and not lines[-1].endswith('\n'):
@@ -788,7 +804,8 @@ def write_env_file(env_values):
                 lines.append(f'{key}="{value}"\n')
             else:
                 lines.append(f'{key}={value}\n')
-
+    
+    # Write to file
     try:
         with open(ENV_FILE_PATH, 'w', encoding='utf-8') as f:
             f.writelines(lines)
@@ -802,7 +819,7 @@ def write_env_file(env_values):
 @login_required
 @admin_required
 def get_settings_schema():
-    """Get config schema (admin only)."""
+    """Get configuration schema definition (admin only)."""
     return jsonify({
         'code': 1,
         'msg': 'success',
@@ -814,8 +831,10 @@ def get_settings_schema():
 @login_required
 @admin_required
 def get_settings_values():
-    """Get current config values including sensitive (admin only)."""
+    """Get current configuration values - including sensitive info (real values) (admin only)."""
     env_values = read_env_file()
+    
+    # Build response data with real values
     result = {}
     for group_key, group in CONFIG_SCHEMA.items():
         result[group_key] = {}
@@ -823,6 +842,7 @@ def get_settings_values():
             key = item['key']
             value = env_values.get(key, item.get('default', ''))
             result[group_key][key] = value
+            # Mark whether password-type fields are configured
             if item['type'] == 'password':
                 result[group_key][f'{key}_configured'] = bool(value)
     
@@ -837,12 +857,16 @@ def get_settings_values():
 @login_required
 @admin_required
 def save_settings():
-    """Save config (admin only)."""
+    """Save configuration (admin only)."""
     try:
         data = request.get_json()
         if not data:
             return jsonify({'code': 0, 'msg': 'Invalid request payload'})
+        
+        # Read current configuration
         current_env = read_env_file()
+        
+        # Update configuration
         updates = {}
         for group_key, group_values in data.items():
             if group_key not in CONFIG_SCHEMA:
@@ -852,20 +876,28 @@ def save_settings():
                 key = item['key']
                 if key in group_values:
                     new_value = group_values[key]
+                    
+                    # Handle empty values
                     if new_value is None or new_value == '':
                         if not item.get('required', True):
                             updates[key] = ''
                     else:
                         updates[key] = str(new_value)
+        
+        # Merge updates
         current_env.update(updates)
+        
+        # Write to file
         if write_env_file(current_env):
+            # Clear configuration cache
             clear_config_cache()
+            
             return jsonify({
                 'code': 1,
                 'msg': 'Settings saved successfully',
                 'data': {
                     'updated_keys': list(updates.keys()),
-                    'requires_restart': True
+                    'requires_restart': True  # Flag that a restart is needed
                 }
             })
         else:
@@ -884,15 +916,16 @@ def get_openrouter_balance():
     try:
         import requests
         from app.config.api_keys import APIKeys
-
+        
         api_key = APIKeys.OPENROUTER_API_KEY
         if not api_key:
             return jsonify({
-                'code': 0,
-                'msg': 'OpenRouter API Key not configured',
+                'code': 0, 
+                'msg': 'OpenRouter API Key is not configured',
                 'data': None
             })
-
+        
+        # Call OpenRouter API to query balance
         # https://openrouter.ai/docs#limits
         resp = requests.get(
             'https://openrouter.ai/api/v1/auth/key',
@@ -905,20 +938,21 @@ def get_openrouter_balance():
         
         if resp.status_code == 200:
             data = resp.json()
+            # OpenRouter response format: {"data": {"label": "...", "usage": 0.0, "limit": null, ...}}
             key_data = data.get('data', {})
-            usage = key_data.get('usage', 0)
-            limit = key_data.get('limit')
-            limit_remaining = key_data.get('limit_remaining')
+            usage = key_data.get('usage', 0)  # Amount used
+            limit = key_data.get('limit')  # Limit (may be null for unlimited)
+            limit_remaining = key_data.get('limit_remaining')  # Remaining quota
             is_free_tier = key_data.get('is_free_tier', False)
             rate_limit = key_data.get('rate_limit', {})
-
+            
             return jsonify({
                 'code': 1,
                 'msg': 'success',
                 'data': {
-                    'usage': round(usage, 4),
-                    'limit': limit,
-                    'limit_remaining': round(limit_remaining, 4) if limit_remaining is not None else None,
+                    'usage': round(usage, 4),  # Amount used (USD)
+                    'limit': limit,  # Total limit
+                    'limit_remaining': round(limit_remaining, 4) if limit_remaining is not None else None,  # Remaining quota
                     'is_free_tier': is_free_tier,
                     'rate_limit': rate_limit,
                     'label': key_data.get('label', '')
@@ -927,27 +961,27 @@ def get_openrouter_balance():
         elif resp.status_code == 401:
             return jsonify({
                 'code': 0,
-                'msg': 'API Key invalid or expired',
+                'msg': 'API Key is invalid or expired',
                 'data': None
             })
         else:
             return jsonify({
                 'code': 0,
-                'msg': f'Request failed: HTTP {resp.status_code}',
+                'msg': f'Query failed: HTTP {resp.status_code}',
                 'data': None
             })
-
+            
     except requests.exceptions.Timeout:
         return jsonify({
             'code': 0,
-            'msg': 'Request timeout; check network',
+            'msg': 'Request timed out, please check your network connection',
             'data': None
         })
     except Exception as e:
         logger.error(f"Get OpenRouter balance failed: {e}")
         return jsonify({
             'code': 0,
-            'msg': f'Request failed: {str(e)}',
+            'msg': f'Query failed: {str(e)}',
             'data': None
         })
 
@@ -960,7 +994,9 @@ def test_connection():
     try:
         data = request.get_json()
         service = data.get('service')
+        
         if service == 'openrouter':
+            # Test OpenRouter connection
             from app.services.llm import LLMService
             llm = LLMService()
             result = llm.test_connection()
@@ -970,6 +1006,7 @@ def test_connection():
                 return jsonify({'code': 0, 'msg': 'OpenRouter connection failed'})
         
         elif service == 'finnhub':
+            # Test Finnhub connection
             import requests
             api_key = data.get('api_key') or os.getenv('FINNHUB_API_KEY')
             if not api_key:

@@ -1,26 +1,28 @@
 # PostgreSQL only — for local development when running backend on host
+# Uses host port 5433 so it doesn't conflict with Homebrew Postgres on 5432.
 # Usage: docker compose -f docker-compose.postgres.yml up -d
 # Then set in server/.env:
-#   DATABASE_URL=postgresql://zing:zing123@127.0.0.1:5432/zing
+#   DATABASE_URL=postgresql://marketlabs:marketlabs123@127.0.0.1:5433/marketlabs
 #   DB_TYPE=postgresql
-# If you see "role zing does not exist", run make postgres-reset-colima (or postgres-reset) then restart the backend.
+# First run creates user/db from POSTGRES_* env. If you see "role marketlabs does not exist", the volume has old data — run: make postgres-reset-colima
 
 services:
   postgres:
     image: postgres:16-alpine
-    container_name: zing-db
+    container_name: marketlabs-db
     restart: unless-stopped
     environment:
-      POSTGRES_DB: ${POSTGRES_DB:-zing}
-      POSTGRES_USER: ${POSTGRES_USER:-zing}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-zing123}
+      # Explicit defaults so the marketlabs user is always created on first init (override with .env if needed)
+      POSTGRES_DB: marketlabs
+      POSTGRES_USER: marketlabs
+      POSTGRES_PASSWORD: marketlabs123
     volumes:
       - postgres_data_local:/var/lib/postgresql/data
       - ./server/migrations/init.sql:/docker-entrypoint-initdb.d/01-init.sql
     ports:
-      - "127.0.0.1:5432:5432"
+      - "127.0.0.1:5433:5432"
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-zing} -d ${POSTGRES_DB:-zing}"]
+      test: ["CMD-SHELL", "pg_isready -U marketlabs -d marketlabs"]
       interval: 5s
       timeout: 3s
       retries: 5

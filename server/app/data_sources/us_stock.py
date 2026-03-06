@@ -1,6 +1,5 @@
 """
-US stock data source.
-Uses yfinance and finnhub for quotes and K-line data.
+US stock data source - uses yfinance and Finnhub.
 """
 from typing import Dict, List, Any, Optional
 from datetime import datetime, timedelta
@@ -19,7 +18,6 @@ class USStockDataSource(BaseDataSource):
 
     name = "USStock/yfinance"
 
-    # yfinance interval mapping
     INTERVAL_MAP = {
         '1m': '1m',
         '5m': '5m',
@@ -31,7 +29,6 @@ class USStockDataSource(BaseDataSource):
         '1W': '1wk'
     }
 
-    # Days to request per timeframe
     DAYS_MAP = {
         '1m': lambda limit: min(7, max(1, (limit // 390) + 2)),
         '5m': lambda limit: min(60, max(1, (limit // 78) + 2)),
@@ -42,7 +39,7 @@ class USStockDataSource(BaseDataSource):
         '1D': lambda limit: min(3650, limit + 1),
         '1W': lambda limit: min(3650, (limit * 7) + 7)
     }
-
+    
     def __init__(self):
         self.finnhub_client = None
         try:
@@ -52,15 +49,11 @@ class USStockDataSource(BaseDataSource):
                 logger.info("Finnhub client initialized")
         except Exception as e:
             logger.warning(f"Finnhub init failed: {e}")
-
+    
     def get_ticker(self, symbol: str) -> Dict[str, Any]:
         """
-        Get US stock realtime quote.
-
-        Prefers Finnhub (more realtime), falls back to yfinance fast_info.
-
-        Returns:
-            dict: {'last', 'change', 'changePercent', 'high', 'low', 'open', 'previousClose'}
+        Get US stock real-time quote. Prefer Finnhub, fallback to yfinance fast_info.
+        Returns dict: last, change, changePercent, high, low, open, previousClose.
         """
         symbol = (symbol or '').strip().upper()
 
@@ -82,12 +75,11 @@ class USStockDataSource(BaseDataSource):
 
         try:
             ticker = yf.Ticker(symbol)
-
             try:
                 fast_info = ticker.fast_info
                 last_price = fast_info.get('lastPrice') or fast_info.get('last_price')
                 prev_close = fast_info.get('previousClose') or fast_info.get('previous_close') or fast_info.get('regularMarketPreviousClose')
-
+                
                 if last_price:
                     change = (last_price - prev_close) if prev_close else 0
                     change_pct = (change / prev_close * 100) if prev_close else 0
@@ -102,12 +94,13 @@ class USStockDataSource(BaseDataSource):
                     }
             except Exception as e:
                 logger.debug(f"yfinance fast_info failed for {symbol}: {e}")
-
+            
+            # fallback to info (slower but more complete)
             try:
                 info = ticker.info
                 last_price = info.get('regularMarketPrice') or info.get('currentPrice')
                 prev_close = info.get('regularMarketPreviousClose') or info.get('previousClose')
-
+                
                 if last_price:
                     change = (last_price - prev_close) if prev_close else 0
                     change_pct = (change / prev_close * 100) if prev_close else 0
@@ -122,7 +115,8 @@ class USStockDataSource(BaseDataSource):
                     }
             except Exception as e:
                 logger.debug(f"yfinance info failed for {symbol}: {e}")
-
+            
+            # last fallback: use recent 1m kline
             try:
                 hist = ticker.history(period='1d', interval='1m')
                 if hist is not None and not hist.empty:
@@ -130,7 +124,7 @@ class USStockDataSource(BaseDataSource):
                     first_row = hist.iloc[0]
                     last_price = float(last_row['Close'])
                     open_price = float(first_row['Open'])
-
+                    
                     return {
                         'last': last_price,
                         'change': round(last_price - open_price, 4),
@@ -142,12 +136,12 @@ class USStockDataSource(BaseDataSource):
                     }
             except Exception as e:
                 logger.debug(f"yfinance history fallback failed for {symbol}: {e}")
-
+                
         except Exception as e:
             logger.error(f"Failed to get ticker for {symbol}: {e}")
-
+        
         return {'last': 0, 'symbol': symbol}
-
+    
     def get_kline(
         self,
         symbol: str,
@@ -155,57 +149,68 @@ class USStockDataSource(BaseDataSource):
         limit: int,
         before_time: Optional[int] = None
     ) -> List[Dict[str, Any]]:
-        """Get US stock K-line data."""
+        """Get US stock kline data."""
         klines = []
-
+        
         try:
             interval = self.INTERVAL_MAP.get(timeframe, '1d')
             days_func = self.DAYS_MAP.get(timeframe, lambda x: x + 1)
             days = days_func(limit)
-
+            
+            # date range
             if before_time:
                 end_date = datetime.fromtimestamp(before_time)
                 start_date = end_date - timedelta(days=days)
             else:
                 end_date = datetime.now()
                 start_date = end_date - timedelta(days=days)
-
+            
+            # logger.info(f"yfinance {symbol}, interval={interval}, {start_date.date()} ~ {end_date.date()}")
+            
+            # try yfinance
             df = self._fetch_yfinance(symbol, interval, start_date, end_date)
-
+            
             if df is None or df.empty:
+                # try finnhub
                 if self.finnhub_client and timeframe == '1D':
                     klines = self._fetch_finnhub(symbol, start_date, end_date, limit)
                     if klines:
                         return klines
             else:
                 klines = self._convert_dataframe(df, limit)
-
+            
+            # filter and limit
             klines = self.filter_and_limit(klines, limit, before_time)
+            
+            # log result
             self.log_result(symbol, klines, timeframe)
-
+            
         except Exception as e:
             logger.error(f"Failed to fetch US stock K-lines {symbol}: {str(e)}")
             import traceback
             logger.error(traceback.format_exc())
-
+        
         return klines
-
+    
     def _fetch_yfinance(self, symbol: str, interval: str, start_date: datetime, end_date: datetime):
-        """Fetch data via yfinance."""
+        """Fetch via yfinance."""
         try:
             ticker = yf.Ticker(symbol)
+            
+            # yfinance end is exclusive; add one day to include end_date
             end_date_inclusive = end_date + timedelta(days=1)
-
+            
             df = ticker.history(
                 start=start_date.strftime('%Y-%m-%d'),
                 end=end_date_inclusive.strftime('%Y-%m-%d'),
                 interval=interval
             )
+            # logger.info(f"yfinance returned {len(df) if df is not None and not df.empty else 0} bars")
             return df
         except Exception as e:
             logger.warning(f"yfinance fetch failed: {e}")
             return None
-
+    
     def _fetch_finnhub(
         self,
         symbol: str,
@@ -213,14 +218,15 @@ class USStockDataSource(BaseDataSource):
         end_date: datetime,
         limit: int
     ) -> List[Dict[str, Any]]:
-        """Fetch daily candles via Finnhub."""
+        """Fetch daily data via Finnhub."""
         klines = []
         try:
             start_ts = int(start_date.timestamp())
             end_ts = int(end_date.timestamp())
-
+            
+            # logger.info(f"Finnhub daily {symbol}")
             candles = self.finnhub_client.stock_candles(symbol, 'D', start_ts, end_ts)
-
+            
             if candles and candles.get('s') == 'ok':
                 for i in range(len(candles['t'])):
                     klines.append(self.format_kline(
@@ -231,16 +237,18 @@ class USStockDataSource(BaseDataSource):
                         close=candles['c'][i],
                         volume=candles['v'][i]
                     ))
+                # logger.info(f"Finnhub returned {len(klines)} bars")
         except Exception as e:
             logger.error(f"Finnhub fetch failed: {e}")
-
+        
         return klines
-
+    
     def _convert_dataframe(self, df, limit: int) -> List[Dict[str, Any]]:
-        """Convert DataFrame to K-line list."""
+        """Convert DataFrame to kline list."""
         klines = []
         df = df.tail(limit).reset_index()
-
+        
+        # time column: Date for daily, Datetime for intraday
         time_col = None
         if 'Datetime' in df.columns:
             time_col = 'Datetime'
@@ -248,19 +256,20 @@ class USStockDataSource(BaseDataSource):
             time_col = 'Date'
         elif 'index' in df.columns:
             time_col = 'index'
-
+        
         if time_col is None:
             logger.warning(f"Unable to determine time column; available columns: {df.columns.tolist()}")
             return klines
-
+        
         for _, row in df.iterrows():
             try:
+                # handle timestamp
                 time_value = row[time_col]
                 if hasattr(time_value, 'timestamp'):
                     ts = int(time_value.timestamp())
                 else:
                     continue
-
+                
                 klines.append(self.format_kline(
                     timestamp=ts,
                     open_price=row['Open'],
@@ -272,5 +281,6 @@ class USStockDataSource(BaseDataSource):
             except Exception as e:
                 logger.debug(f"Failed to parse row data: {e}")
                 continue
-
+        
         return klines
+

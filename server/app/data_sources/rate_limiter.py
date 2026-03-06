@@ -1,14 +1,11 @@
 # -*- coding: utf-8 -*-
 """
 ===================================
-Rate Limiter Module
+Rate limiter / anti-ban module
 ===================================
 
-Anti-scraping strategies:
-1. Random sleep (jitter)
-2. Random User-Agent rotation
-3. Exponential backoff retry
-4. Request rate limiting
+Reference: daily_stock_analysis project.
+Anti-scraping: 1) random sleep (jitter), 2) random User-Agent, 3) exponential backoff retry, 4) request rate limit.
 """
 
 import time
@@ -20,42 +17,51 @@ from functools import wraps
 logger = logging.getLogger(__name__)
 
 
+# ============================================
 # User-Agent pool
+# ============================================
+
 USER_AGENTS = [
+    # Chrome Windows
     'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
     'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36',
     'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36',
+    # Chrome Mac
     'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
     'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36',
+    # Firefox
     'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:121.0) Gecko/20100101 Firefox/121.0',
     'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:120.0) Gecko/20100101 Firefox/120.0',
     'Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:121.0) Gecko/20100101 Firefox/121.0',
+    # Safari
     'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.2 Safari/605.1.15',
     'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.1 Safari/605.1.15',
+    # Edge
     'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36 Edg/120.0.0.0',
+    # Linux Chrome
     'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
 ]
 
 
 def get_random_user_agent() -> str:
-    """Return a random User-Agent string."""
+    """Return a random User-Agent."""
     return random.choice(USER_AGENTS)
 
 
 def get_request_headers(referer: Optional[str] = None) -> dict:
     """
-    Get request headers with random User-Agent.
+    Request headers with random User-Agent.
 
     Args:
-        referer: Optional Referer header
+        referer: Optional Referer header.
 
     Returns:
-        Headers dict
+        Headers dict.
     """
     headers = {
         'User-Agent': get_random_user_agent(),
         'Accept': 'application/json, text/plain, */*',
-        'Accept-Language': 'en-US,en;q=0.9',
+        'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.8',
         'Accept-Encoding': 'gzip, deflate',
         'Connection': 'keep-alive',
     }
@@ -66,19 +72,22 @@ def get_request_headers(referer: Optional[str] = None) -> dict:
     return headers
 
 
+# ============================================
 # Random sleep (jitter)
+# ============================================
+
 def random_sleep(
     min_seconds: float = 1.0,
     max_seconds: float = 3.0,
     log: bool = False
 ) -> None:
     """
-    Random sleep (jitter). Simulates human-like delay between requests.
+    Random sleep (jitter) to mimic human behavior between requests.
 
     Args:
-        min_seconds: Minimum sleep (seconds)
-        max_seconds: Maximum sleep (seconds)
-        log: Whether to log the sleep duration
+        min_seconds: Min sleep (seconds)
+        max_seconds: Max sleep (seconds)
+        log: Whether to log
     """
     sleep_time = random.uniform(min_seconds, max_seconds)
     if log:
@@ -86,10 +95,13 @@ def random_sleep(
     time.sleep(sleep_time)
 
 
+# ============================================
 # Request rate limiter
+# ============================================
+
 class RateLimiter:
     """
-    Request rate limiter. Ensures a minimum interval between requests.
+    Request rate limiter - enforces minimum interval between requests.
     """
 
     def __init__(
@@ -100,9 +112,9 @@ class RateLimiter:
     ):
         """
         Args:
-            min_interval: Minimum interval between requests (seconds)
-            jitter_min: Min jitter (seconds)
-            jitter_max: Max jitter (seconds)
+            min_interval: Min interval between requests (seconds)
+            jitter_min: Jitter min (seconds)
+            jitter_max: Jitter max (seconds)
         """
         self.min_interval = min_interval
         self.jitter_min = jitter_min
@@ -111,10 +123,10 @@ class RateLimiter:
 
     def wait(self) -> float:
         """
-        Wait until the next request is allowed.
+        Wait until next request is allowed.
 
         Returns:
-            Actual wait time in seconds
+            Actual wait time (seconds).
         """
         wait_time = 0.0
 
@@ -133,11 +145,14 @@ class RateLimiter:
         return wait_time
 
     def reset(self) -> None:
-        """Reset the limiter."""
+        """Reset limiter."""
         self._last_request_time = None
 
 
+# ============================================
 # Exponential backoff retry decorator
+# ============================================
+
 def retry_with_backoff(
     max_attempts: int = 3,
     base_delay: float = 2.0,
@@ -150,17 +165,16 @@ def retry_with_backoff(
     Exponential backoff retry decorator.
 
     Args:
-        max_attempts: Maximum retry attempts
+        max_attempts: Max retries
         base_delay: Base delay (seconds)
-        max_delay: Maximum delay (seconds)
-        exponential_base: Exponential base
+        max_delay: Max delay (seconds)
+        exponential_base: Exponent base
         exceptions: Exception types to retry
-        on_retry: Callback on each retry (attempt, exception)
+        on_retry: Callback on retry (attempt, exception)
 
     Example:
         @retry_with_backoff(max_attempts=3, exceptions=(ConnectionError, TimeoutError))
-        def fetch_data():
-            ...
+        def fetch_data(): ...
     """
     def decorator(func: Callable) -> Callable:
         @wraps(func)
@@ -174,7 +188,7 @@ def retry_with_backoff(
                     last_exception = e
 
                     if attempt == max_attempts:
-                        logger.error(f"[Retry] {func.__name__} max attempts ({max_attempts}) reached, giving up")
+                        logger.error(f"[retry] {func.__name__} max attempts ({max_attempts}) reached, giving up")
                         raise
 
                     delay = min(
@@ -184,7 +198,7 @@ def retry_with_backoff(
                     delay *= random.uniform(0.8, 1.2)
 
                     logger.warning(
-                        f"[Retry] {func.__name__} attempt {attempt}/{max_attempts} failed: {e}, "
+                        f"[retry] {func.__name__} attempt {attempt}/{max_attempts} failed: {e}, "
                         f"retrying in {delay:.1f}s..."
                     )
 
@@ -199,7 +213,10 @@ def retry_with_backoff(
     return decorator
 
 
-# Global rate limiter instances
+# ============================================
+# Global limiter instances
+# ============================================
+
 _eastmoney_limiter = RateLimiter(
     min_interval=2.0,
     jitter_min=1.0,

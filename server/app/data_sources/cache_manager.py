@@ -1,22 +1,23 @@
 # -*- coding: utf-8 -*-
 """
 ===================================
-Data Cache Module
+Data cache management module
 ===================================
 
-Caches realtime quotes and K-line data to reduce duplicate requests.
+Reference: daily_stock_analysis project.
+Caches real-time quotes and kline data to reduce duplicate requests.
 
 Features:
-- TTL (Time To Live) expiration
-- LRU (Least Recently Used) eviction
-- Partitioned by data type
+1. TTL (Time To Live) expiration
+2. LRU (Least Recently Used) eviction
+3. Partitioned by data type
 """
 
 import time
 import logging
 from typing import Dict, Any, Optional, List
 from collections import OrderedDict
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
 import threading
 
@@ -32,11 +33,11 @@ class CacheEntry:
     hit_count: int = 0
 
     def is_expired(self) -> bool:
-        """Check if entry is expired."""
+        """Check if expired."""
         return time.time() - self.timestamp > self.ttl
 
     def age(self) -> float:
-        """Return age in seconds."""
+        """Return cache age in seconds."""
         return time.time() - self.timestamp
 
 
@@ -46,7 +47,7 @@ class DataCache:
 
     Features:
     - TTL expiration
-    - Max capacity
+    - Max capacity limit
     - LRU eviction
     - Thread-safe
     """
@@ -54,8 +55,8 @@ class DataCache:
     def __init__(
         self,
         name: str = "default",
-        default_ttl: float = 600.0,
-        max_size: int = 1000
+        default_ttl: float = 600.0,  # default 10 minutes
+        max_size: int = 1000          # max cache entries
     ):
         self.name = name
         self.default_ttl = default_ttl
@@ -63,12 +64,16 @@ class DataCache:
         self._cache: OrderedDict[str, CacheEntry] = OrderedDict()
         self._lock = threading.RLock()
 
+        # stats
         self._hits = 0
         self._misses = 0
-
+    
     def get(self, key: str) -> Optional[Any]:
         """
-        Get cached data. Returns None if missing or expired.
+        Get cached data.
+
+        Returns:
+            Cached data, or None if missing/expired.
         """
         with self._lock:
             if key not in self._cache:
@@ -77,19 +82,21 @@ class DataCache:
 
             entry = self._cache[key]
 
+            # check if expired
             if entry.is_expired():
                 del self._cache[key]
                 self._misses += 1
-                logger.debug(f"[Cache] {self.name}:{key} expired, removed")
+                logger.debug(f"[cache] {self.name}:{key} expired, removed")
                 return None
 
+            # update access order (LRU)
             self._cache.move_to_end(key)
             entry.hit_count += 1
             self._hits += 1
 
-            logger.debug(f"[Cache hit] {self.name}:{key} (age: {entry.age():.0f}s/{entry.ttl:.0f}s)")
+            logger.debug(f"[cache hit] {self.name}:{key} (age: {entry.age():.0f}s/{entry.ttl:.0f}s)")
             return entry.data
-
+    
     def set(
         self,
         key: str,
@@ -97,7 +104,7 @@ class DataCache:
         ttl: Optional[float] = None
     ) -> None:
         """
-        Set cache entry.
+        Set cache data.
 
         Args:
             key: Cache key
@@ -105,9 +112,10 @@ class DataCache:
             ttl: TTL in seconds; None uses default
         """
         with self._lock:
+            # evict by LRU when at capacity
             while len(self._cache) >= self.max_size:
                 oldest_key, _ = self._cache.popitem(last=False)
-                logger.debug(f"[Cache] {self.name} full, evicted: {oldest_key}")
+                logger.debug(f"[cache] {self.name} full, evicted: {oldest_key}")
 
             actual_ttl = ttl if ttl is not None else self.default_ttl
             self._cache[key] = CacheEntry(
@@ -116,27 +124,27 @@ class DataCache:
                 ttl=actual_ttl
             )
 
-            logger.debug(f"[Cache set] {self.name}:{key} TTL={actual_ttl}s")
-
+            logger.debug(f"[cache set] {self.name}:{key} TTL={actual_ttl}s")
+    
     def delete(self, key: str) -> bool:
         """Delete a cache entry."""
         with self._lock:
             if key in self._cache:
                 del self._cache[key]
-                logger.debug(f"[Cache] {self.name}:{key} deleted")
+                logger.debug(f"[cache] {self.name}:{key} deleted")
                 return True
             return False
 
     def clear(self) -> int:
-        """Clear all entries. Returns count cleared."""
+        """Clear cache."""
         with self._lock:
             count = len(self._cache)
             self._cache.clear()
-            logger.info(f"[Cache] {self.name} cleared ({count} entries)")
+            logger.info(f"[cache] {self.name} cleared {count} entries")
             return count
 
     def cleanup_expired(self) -> int:
-        """Remove expired entries. Returns count removed."""
+        """Remove expired entries."""
         with self._lock:
             expired_keys = [
                 key for key, entry in self._cache.items()
@@ -146,15 +154,15 @@ class DataCache:
                 del self._cache[key]
 
             if expired_keys:
-                logger.debug(f"[Cache] {self.name} cleaned {len(expired_keys)} expired")
+                logger.debug(f"[cache] {self.name} cleaned {len(expired_keys)} expired entries")
             return len(expired_keys)
 
     def stats(self) -> Dict[str, Any]:
-        """Get cache statistics."""
+        """Return cache statistics."""
         with self._lock:
             total_requests = self._hits + self._misses
             hit_rate = self._hits / total_requests if total_requests > 0 else 0
-
+            
             return {
                 'name': self.name,
                 'size': len(self._cache),
@@ -166,33 +174,39 @@ class DataCache:
             }
 
 
+# ============================================
 # Global cache instances
+# ============================================
+
+# Real-time quotes cache (20 min TTL)
 _realtime_cache = DataCache(
     name="realtime",
-    default_ttl=1200.0,
+    default_ttl=1200.0,  # 20 minutes
     max_size=6000
 )
 
+# Kline cache (5 min TTL)
 _kline_cache = DataCache(
     name="kline",
-    default_ttl=300.0,
-    max_size=500
+    default_ttl=300.0,   # 5 minutes
+    max_size=500         # max 500 symbols
 )
 
+# Stock info cache (1 day TTL)
 _stock_info_cache = DataCache(
     name="stock_info",
-    default_ttl=86400.0,
+    default_ttl=86400.0,  # 24 hours
     max_size=6000
 )
 
 
 def get_realtime_cache() -> DataCache:
-    """Get realtime quote cache."""
+    """Get real-time quotes cache."""
     return _realtime_cache
 
 
 def get_kline_cache() -> DataCache:
-    """Get K-line cache."""
+    """Get kline cache."""
     return _kline_cache
 
 
@@ -208,7 +222,8 @@ def generate_kline_cache_key(
     before_time: Optional[int] = None
 ) -> str:
     """
-    Generate K-line cache key.
+    Generate kline cache key.
+
     Format: symbol:timeframe:limit[:before_time]
     """
     key = f"{symbol}:{timeframe}:{limit}"

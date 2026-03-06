@@ -1,11 +1,11 @@
 """
 Indicator Parameters Parser and Helper Functions
 
-Two main features:
-1. External params - parse @param declarations in indicator code
-2. Call another indicator - provide call_indicator() in sandbox
+Two core features:
+1. External indicator params - parse @param declarations in indicator code
+2. Indicator calling another indicator - call_indicator() helper
 
-Param format in code:
+Param declaration format:
 # @param param_name type default_value description
 # @param ma_fast int 5 short MA period
 # @param ma_slow int 20 long MA period
@@ -26,7 +26,7 @@ logger = get_logger(__name__)
 class IndicatorParamsParser:
     """Parse @param declarations from indicator code."""
 
-    # Pattern: # @param name type default description
+    # Param declaration regex: # @param name type default description
     PARAM_PATTERN = re.compile(
         r'#\s*@param\s+(\w+)\s+(int|float|bool|str|string)\s+(\S+)\s*(.*)',
         re.IGNORECASE
@@ -38,7 +38,7 @@ class IndicatorParamsParser:
         Parse @param declarations from indicator code.
 
         Returns:
-            List of param definitions: [{"name", "type", "default", "description"}, ...]
+            List of param definitions, e.g. name, type, default, description.
         """
         params = []
         if not indicator_code:
@@ -52,12 +52,14 @@ class IndicatorParamsParser:
                 param_type = match.group(2).lower()
                 default_str = match.group(3)
                 description = match.group(4).strip() if match.group(4) else ''
-                
+
+                # convert default value type
                 default = cls._convert_value(default_str, param_type)
 
+                # normalize type name
                 if param_type == 'string':
                     param_type = 'str'
-
+                
                 params.append({
                     "name": name,
                     "type": param_type,
@@ -86,14 +88,14 @@ class IndicatorParamsParser:
     @classmethod
     def merge_params(cls, declared_params: List[Dict], user_params: Dict[str, Any]) -> Dict[str, Any]:
         """
-        Merge declared params with user-provided values.
+        Merge declared params with user-provided params.
 
         Args:
             declared_params: Params parsed from code
             user_params: User-provided values
 
         Returns:
-            Merged dict (user value or default per param)
+            Merged dict (user value or default).
         """
         result = {}
         for param in declared_params:
@@ -102,8 +104,10 @@ class IndicatorParamsParser:
             default = param['default']
 
             if name in user_params:
+                # user provided value, convert to correct type
                 result[name] = cls._convert_value(str(user_params[name]), param_type)
             else:
+                # use default
                 result[name] = default
         
         return result
@@ -111,19 +115,22 @@ class IndicatorParamsParser:
 
 class IndicatorCaller:
     """
-    Call another indicator from within an indicator.
+    Indicator caller - allows one indicator to call another.
 
-    In indicator code:
-        rsi_df = call_indicator(5, df)           # by ID
-        macd_df = call_indicator('My MACD', df)  # by name
+    Usage (in indicator code):
+        # by ID
+        rsi_df = call_indicator(5, df)
+        # by name (own indicator)
+        macd_df = call_indicator('My MACD', df)
     """
 
-    MAX_CALL_DEPTH = 5  # prevent circular calls
+    # Max call depth to prevent circular dependency
+    MAX_CALL_DEPTH = 5
 
     def __init__(self, user_id: int, current_indicator_id: int = None):
         self.user_id = user_id
         self.current_indicator_id = current_indicator_id
-        self._call_stack = []  # for cycle detection
+        self._call_stack = []  # call stack for cycle detection
 
     def call_indicator(
         self,
@@ -133,43 +140,47 @@ class IndicatorCaller:
         _depth: int = 0
     ) -> Optional['pd.DataFrame']:
         """
-        Call another indicator and return its result DataFrame.
+        Call another indicator and return its result.
 
         Args:
             indicator_ref: Indicator ID or name
-            df: Input OHLCV DataFrame
-            params: Params for the called indicator
-            _depth: Internal call depth
+            df: Input kline data
+            params: Params passed to the called indicator
+            _depth: Internal, tracks call depth
 
         Returns:
-            DataFrame with columns from the called indicator
+            DataFrame with columns from the called indicator.
         """
         import pandas as pd
         import numpy as np
-        
+
+        # check call depth
         if _depth >= self.MAX_CALL_DEPTH:
             logger.error(f"Indicator call depth exceeded {self.MAX_CALL_DEPTH}")
-            return df.copy(), None
-        
+            return df.copy()
+
+        # get indicator code
         indicator_code, indicator_id = self._get_indicator_code(indicator_ref)
         if not indicator_code:
             logger.warning(f"Indicator not found: {indicator_ref}")
-            return df.copy(), None
+            return df.copy()
 
+        # check circular dependency
         if indicator_id in self._call_stack:
             logger.error(f"Circular dependency detected: {self._call_stack} -> {indicator_id}")
-            return df.copy(), None
-        
+            return df.copy()
+
         self._call_stack.append(indicator_id)
-        
+
         try:
+            # parse and merge params
             declared_params = IndicatorParamsParser.parse_params(indicator_code)
             merged_params = IndicatorParamsParser.merge_params(declared_params, params or {})
 
+            # prepare execution env
             df_copy = df.copy()
             local_vars = {
                 'df': df_copy,
-                'output': None,
                 'open': df_copy['open'].astype('float64') if 'open' in df_copy.columns else pd.Series(dtype='float64'),
                 'high': df_copy['high'].astype('float64') if 'high' in df_copy.columns else pd.Series(dtype='float64'),
                 'low': df_copy['low'].astype('float64') if 'low' in df_copy.columns else pd.Series(dtype='float64'),
@@ -179,9 +190,11 @@ class IndicatorCaller:
                 'np': np,
                 'pd': pd,
                 'params': merged_params,
+                # recursive call support
                 'call_indicator': lambda ref, d, p=None: self.call_indicator(ref, d, p, _depth + 1)
             }
 
+            # safe execution
             import builtins
             def safe_import(name, *args, **kwargs):
                 allowed_modules = ['numpy', 'pandas', 'math', 'json', 'time']
@@ -204,33 +217,33 @@ class IndicatorCaller:
             exec(pre_import, exec_env)
             exec(indicator_code, exec_env)
             
-            result_df = exec_env.get('df', df_copy)
-            output = exec_env.get('output')
-            return result_df, output
+            return exec_env.get('df', df_copy)
             
         except Exception as e:
             logger.error(f"Error calling indicator {indicator_ref}: {e}")
-            return df.copy(), None
+            return df.copy()
         finally:
             self._call_stack.pop()
     
     def _get_indicator_code(self, indicator_ref: Any) -> Tuple[Optional[str], Optional[int]]:
-        """Load indicator code by ID or name."""
+        """Get indicator code by ID or name."""
         try:
             with get_db_connection() as db:
                 cursor = db.cursor()
 
                 if isinstance(indicator_ref, int):
+                    # by ID
                     cursor.execute("""
-                        SELECT id, code FROM qd_indicator_codes 
+                        SELECT id, code FROM ml_indicator_codes 
                         WHERE id = %s AND (user_id = %s OR publish_to_community = 1)
                     """, (indicator_ref, self.user_id))
                 else:
+                    # by name (prefer own indicator)
                     cursor.execute("""
-                        SELECT id, code FROM qd_indicator_codes 
+                        SELECT id, code FROM ml_indicator_codes 
                         WHERE name = %s AND user_id = %s
                         UNION
-                        SELECT id, code FROM qd_indicator_codes 
+                        SELECT id, code FROM ml_indicator_codes 
                         WHERE name = %s AND publish_to_community = 1
                         LIMIT 1
                     """, (str(indicator_ref), self.user_id, str(indicator_ref)))
@@ -249,18 +262,18 @@ class IndicatorCaller:
 
 def get_indicator_params(indicator_id: int) -> List[Dict[str, Any]]:
     """
-    Get param declarations for an indicator (for API).
+    Get parameter declarations for an indicator (for API).
 
     Args:
         indicator_id: Indicator ID
 
     Returns:
-        List of param definitions
+        List of param declarations.
     """
     try:
         with get_db_connection() as db:
             cursor = db.cursor()
-            cursor.execute("SELECT code FROM qd_indicator_codes WHERE id = %s", (indicator_id,))
+            cursor.execute("SELECT code FROM ml_indicator_codes WHERE id = %s", (indicator_id,))
             row = cursor.fetchone()
             cursor.close()
             

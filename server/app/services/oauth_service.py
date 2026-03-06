@@ -297,7 +297,7 @@ class OAuthService:
                 # Check if OAuth link exists
                 cur.execute(
                     """
-                    SELECT user_id FROM qd_oauth_links
+                    SELECT user_id FROM ml_oauth_links
                     WHERE provider = ? AND provider_user_id = ?
                     """,
                     (provider, provider_user_id)
@@ -310,7 +310,7 @@ class OAuthService:
                     cur.execute(
                         """
                         SELECT id, username, email, nickname, avatar, status, role
-                        FROM qd_users WHERE id = ?
+                        FROM ml_users WHERE id = ?
                         """,
                         (user_id,)
                     )
@@ -320,7 +320,7 @@ class OAuthService:
                         # Update OAuth tokens
                         cur.execute(
                             """
-                            UPDATE qd_oauth_links 
+                            UPDATE ml_oauth_links 
                             SET access_token = ?, refresh_token = ?, updated_at = NOW()
                             WHERE provider = ? AND provider_user_id = ?
                             """,
@@ -330,7 +330,7 @@ class OAuthService:
                         
                         # Update last login
                         cur.execute(
-                            "UPDATE qd_users SET last_login_at = NOW() WHERE id = ?",
+                            "UPDATE ml_users SET last_login_at = NOW() WHERE id = ?",
                             (user_id,)
                         )
                         db.commit()
@@ -339,7 +339,7 @@ class OAuthService:
                     else:
                         # Orphaned OAuth link - remove it
                         cur.execute(
-                            "DELETE FROM qd_oauth_links WHERE provider = ? AND provider_user_id = ?",
+                            "DELETE FROM ml_oauth_links WHERE provider = ? AND provider_user_id = ?",
                             (provider, provider_user_id)
                         )
                         db.commit()
@@ -349,7 +349,7 @@ class OAuthService:
                     cur.execute(
                         """
                         SELECT id, username, email, nickname, avatar, status, role
-                        FROM qd_users WHERE email = ?
+                        FROM ml_users WHERE email = ?
                         """,
                         (email,)
                     )
@@ -359,7 +359,7 @@ class OAuthService:
                         # Link OAuth to existing user
                         cur.execute(
                             """
-                            INSERT INTO qd_oauth_links 
+                            INSERT INTO ml_oauth_links 
                             (user_id, provider, provider_user_id, provider_email, 
                              provider_name, provider_avatar, access_token, refresh_token)
                             VALUES (?, ?, ?, ?, ?, ?, ?, ?)
@@ -369,7 +369,7 @@ class OAuthService:
                              oauth_info.get('refresh_token'))
                         )
                         cur.execute(
-                            "UPDATE qd_users SET last_login_at = NOW() WHERE id = ?",
+                            "UPDATE ml_users SET last_login_at = NOW() WHERE id = ?",
                             (existing_user['id'],)
                         )
                         db.commit()
@@ -385,7 +385,7 @@ class OAuthService:
                 # Ensure username is unique
                 counter = 1
                 while True:
-                    cur.execute("SELECT id FROM qd_users WHERE username = ?", (username,))
+                    cur.execute("SELECT id FROM ml_users WHERE username = ?", (username,))
                     if not cur.fetchone():
                         break
                     username = f"{base_username}_{counter}"
@@ -399,7 +399,7 @@ class OAuthService:
                 
                 # Ensure email is unique or generate placeholder
                 if email:
-                    cur.execute("SELECT id FROM qd_users WHERE email = ?", (email,))
+                    cur.execute("SELECT id FROM ml_users WHERE email = ?", (email,))
                     if cur.fetchone():
                         email = f"{provider}_{provider_user_id}@oauth.local"
                 else:
@@ -408,7 +408,7 @@ class OAuthService:
                 # Insert new user
                 cur.execute(
                     """
-                    INSERT INTO qd_users 
+                    INSERT INTO ml_users 
                     (username, password_hash, email, nickname, avatar, status, role, email_verified)
                     VALUES (?, ?, ?, ?, ?, 'active', 'user', TRUE)
                     """,
@@ -419,7 +419,7 @@ class OAuthService:
                 # Create OAuth link
                 cur.execute(
                     """
-                    INSERT INTO qd_oauth_links 
+                    INSERT INTO ml_oauth_links 
                     (user_id, provider, provider_user_id, provider_email, 
                      provider_name, provider_avatar, access_token, refresh_token)
                     VALUES (?, ?, ?, ?, ?, ?, ?, ?)
@@ -431,7 +431,7 @@ class OAuthService:
                 
                 # Update last_login_at for new OAuth users
                 cur.execute(
-                    "UPDATE qd_users SET last_login_at = NOW() WHERE id = ?",
+                    "UPDATE ml_users SET last_login_at = NOW() WHERE id = ?",
                     (user_id,)
                 )
                 
@@ -478,7 +478,7 @@ class OAuthService:
                 cur.execute(
                     """
                     SELECT provider, provider_email, provider_name, created_at
-                    FROM qd_oauth_links WHERE user_id = ?
+                    FROM ml_oauth_links WHERE user_id = ?
                     """,
                     (user_id,)
                 )
@@ -497,7 +497,7 @@ class OAuthService:
                 
                 # Check if user has password (can't unlink last auth method)
                 cur.execute(
-                    "SELECT password_hash FROM qd_users WHERE id = ?",
+                    "SELECT password_hash FROM ml_users WHERE id = ?",
                     (user_id,)
                 )
                 user = cur.fetchone()
@@ -505,7 +505,7 @@ class OAuthService:
                 if not user or not user['password_hash']:
                     # Check if this is the only OAuth link
                     cur.execute(
-                        "SELECT COUNT(*) as count FROM qd_oauth_links WHERE user_id = ?",
+                        "SELECT COUNT(*) as count FROM ml_oauth_links WHERE user_id = ?",
                         (user_id,)
                     )
                     count = cur.fetchone()['count']
@@ -514,7 +514,7 @@ class OAuthService:
                         return False, 'Cannot unlink the only authentication method'
                 
                 cur.execute(
-                    "DELETE FROM qd_oauth_links WHERE user_id = ? AND provider = ?",
+                    "DELETE FROM ml_oauth_links WHERE user_id = ? AND provider = ?",
                     (user_id, provider)
                 )
                 db.commit()

@@ -117,8 +117,8 @@ curl http://localhost:5000/api/ibkr/positions
 To remove this module, delete the following files/directories:
 
 ```
-server/app/services/ibkr_trading/    # Entire directory
-server/app/routes/ibkr.py            # Route file
+backend_api_python/app/services/ibkr_trading/    # Entire directory
+backend_api_python/app/routes/ibkr.py            # Route file
 ```
 
 Then remove the related import and registration code in `app/routes/__init__.py`.

@@ -38,10 +38,10 @@ def _normalize_lang(lang: str | None) -> str:
     """
     Normalize language code for AI output.
 
-    This should align with frontend i18n locales under `qd_vue/src/locales/lang`.
+    This should align with frontend i18n locales under `web/src/locales/lang`.
     Supported:
       - zh-CN, zh-TW, en-US, ko-KR, th-TH, vi-VN, ar-SA, de-DE, fr-FR, ja-JP
-    Default: zh-CN
+    Default: en-US
     """
     supported = {
         "zh-CN",
@@ -57,7 +57,7 @@ def _normalize_lang(lang: str | None) -> str:
     }
     l = (lang or "").strip()
     if not l:
-        return "zh-CN"
+        return "en-US"
     alias = {
         "zh": "zh-CN",
         "zh-cn": "zh-CN",
@@ -82,13 +82,13 @@ def _normalize_lang(lang: str | None) -> str:
         "ar-sa": "ar-SA",
     }
     l2 = alias.get(l.lower(), l)
-    return l2 if l2 in supported else "zh-CN"
+    return l2 if l2 in supported else "en-US"
 
 
 @backtest_bp.route('/backtest/precision-info', methods=['GET'])
 def get_precision_info():
     """
-    Get backtest precision info (for UI hints).
+    Get backtest precision info (for frontend hint).
 
     Params (Query String):
         market: Market type
@@ -96,7 +96,7 @@ def get_precision_info():
         endDate: End date (YYYY-MM-DD)
 
     Returns:
-        Precision info: recommended execution timeframe and estimated bar count
+        Precision info: recommended execution timeframe and estimated kline count.
     """
     try:
         # Use request.args for GET params
@@ -164,7 +164,7 @@ def run_backtest():
         leverage = int(data.get('leverage', 1))
         trade_direction = data.get('tradeDirection', 'long')  # long, short, both
         strategy_config = data.get('strategyConfig') or {}
-        # Multi-timeframe backtest toggle (default on, crypto only)
+        # Multi-timeframe backtest (default on, crypto only)
         enable_mtf = data.get('enableMtf', True)
         if isinstance(enable_mtf, str):
             enable_mtf = enable_mtf.lower() in ['true', '1', 'yes']
@@ -177,7 +177,7 @@ def run_backtest():
                 iid = int(indicator_id)
                 with get_db_connection() as db:
                     cur = db.cursor()
-                    cur.execute("SELECT code FROM qd_indicator_codes WHERE id = ?", (iid,))
+                    cur.execute("SELECT code FROM ml_indicator_codes WHERE id = ?", (iid,))
                     row = cur.fetchone()
                     cur.close()
                 if row and row.get('code'):
@@ -185,7 +185,7 @@ def run_backtest():
             except Exception:
                 pass
 
-        # Param validation
+        # Validate params
         if not all([indicator_code, symbol, market, timeframe, start_date_str, end_date_str]):
             return jsonify({
                 'code': 0,
@@ -193,7 +193,7 @@ def run_backtest():
                 'data': None
             }), 400
         
-        # Parse dates (start 00:00:00, end 23:59:59 for full-day coverage)
+        # Parse dates: start 00:00:00, end 23:59:59
         start_date = datetime.strptime(start_date_str, '%Y-%m-%d')
         end_date = datetime.strptime(end_date_str, '%Y-%m-%d').replace(hour=23, minute=59, second=59)
 
@@ -201,16 +201,16 @@ def run_backtest():
 
         # Max range by timeframe
         if timeframe == '1m':
-            max_days = 30   # 1m bars: up to 1 month
+            max_days = 30
             max_range_text = '1 month'
         elif timeframe == '5m':
-            max_days = 180  # 5m bars: up to 6 months
+            max_days = 180
             max_range_text = '6 months'
         elif timeframe in ['15m', '30m']:
-            max_days = 365  # 15m/30m: up to 1 year
+            max_days = 365
             max_range_text = '1 year'
         else:  # 1H, 4H, 1D, 1W
-            max_days = 1095  # 1h+: up to 3 years
+            max_days = 1095
             max_range_text = '3 years'
         
         if days_diff > max_days:
@@ -221,7 +221,7 @@ def run_backtest():
             }), 400
         
         
-        # Run backtest (multi-timeframe when crypto + MTF enabled)
+        # Run backtest (MTF when crypto + enable_mtf)
         if enable_mtf and market.lower() in ['crypto', 'cryptocurrency']:
             result = backtest_service.run_multi_timeframe(
                 indicator_code=indicator_code,
@@ -253,12 +253,11 @@ def run_backtest():
                 trade_direction=trade_direction,
                 strategy_config=strategy_config
             )
-            # Standard backtest precision info
             result['precision_info'] = {
                 'enabled': False,
                 'timeframe': timeframe,
                 'precision': 'standard',
-                'message': 'Standard bar backtest'
+                'message': 'Standard kline backtest'
             }
 
         # Persist backtest run for AI optimization / history
@@ -268,7 +267,7 @@ def run_backtest():
                 cur = db.cursor()
                 cur.execute(
                     """
-                    INSERT INTO qd_backtest_runs
+                    INSERT INTO ml_backtest_runs
                     (user_id, indicator_id, market, symbol, timeframe, start_date, end_date,
                      initial_capital, commission, slippage, leverage, trade_direction,
                      strategy_config, status, error_message, result_json, created_at)
@@ -328,7 +327,7 @@ def run_backtest():
                 cur = db.cursor()
                 cur.execute(
                     """
-                    INSERT INTO qd_backtest_runs
+                    INSERT INTO ml_backtest_runs
                     (user_id, indicator_id, market, symbol, timeframe, start_date, end_date,
                      initial_capital, commission, slippage, leverage, trade_direction,
                      strategy_config, status, error_message, result_json, created_at)
@@ -418,7 +417,7 @@ def get_backtest_history():
                        start_date, end_date, initial_capital, commission, slippage,
                        leverage, trade_direction, strategy_config, status, error_message,
                        created_at
-                FROM qd_backtest_runs
+                FROM ml_backtest_runs
                 WHERE {where_sql}
                 ORDER BY id DESC
                 LIMIT ? OFFSET ?
@@ -465,7 +464,7 @@ def get_backtest_run():
                        start_date, end_date, initial_capital, commission, slippage,
                        leverage, trade_direction, strategy_config, status, error_message,
                        result_json, created_at
-                FROM qd_backtest_runs
+                FROM ml_backtest_runs
                 WHERE id = ? AND user_id = ?
                 """,
                 (run_id, user_id),
@@ -496,12 +495,10 @@ def get_backtest_run():
 def _heuristic_ai_advice(runs: list[dict], lang: str) -> str:
     """
     Heuristic fallback when no model key is configured.
-    Returns suggestions for parameter tuning in the requested locale.
+    Returns English suggestions for parameter tuning.
     """
     if not runs:
         msg_map = {
-            "zh-CN": "No backtest runs selected.",
-            "zh-TW": "No backtest runs selected.",
             "en-US": "No backtest runs selected.",
             "ko-KR": "분석할 백테스트 기록을 찾을 수 없습니다.",
             "th-TH": "ไม่พบประวัติแบ็กเทสต์สำหรับการวิเคราะห์",
@@ -543,8 +540,6 @@ def _heuristic_ai_advice(runs: list[dict], lang: str) -> str:
 
     # Minimal localized headings to keep heuristic readable across locales.
     headings = {
-        "zh-CN": {"overall": "Overall", "params": "Parameter suggestions (edit backtest config and re-run)", "next": "Next steps"},
-        "zh-TW": {"overall": "Overall", "params": "Parameter suggestions (edit backtest config and re-run)", "next": "Next steps"},
         "en-US": {"overall": "Overall", "params": "Parameter suggestions (edit backtest config and re-run)", "next": "Next steps"},
         "ko-KR": {"overall": "요약", "params": "파라미터 제안(백테스트 설정 변경)", "next": "다음 단계"},
         "th-TH": {"overall": "สรุป", "params": "ข้อเสนอแนะพารามิเตอร์ (ปรับค่าที่ตั้งแบ็กเทสต์)", "next": "ขั้นตอนถัดไป"},
@@ -557,89 +552,47 @@ def _heuristic_ai_advice(runs: list[dict], lang: str) -> str:
     h = headings.get(lang, headings["en-US"])
 
     lines = []
-    if lang == "en-US":
-        if len(runs) > 1:
+    if len(runs) > 1:
+        if lang == "ko-KR":
+            lines.append(f"{len(runs)}개의 백테스트 기록을 받았습니다. 아래는 #{r0.get('id','')} 기준으로 제안하며, 여러 기록으로 A/B 검증을 권장합니다.")
+        elif lang == "th-TH":
+            lines.append(f"ได้รับประวัติแบ็กเทสต์ {len(runs)} รายการ ข้อเสนอแนะด้านล่างอิงจาก #{r0.get('id','')} และแนะนำให้ทำ A/B test เทียบหลายชุด")
+        elif lang == "vi-VN":
+            lines.append(f"Đã nhận {len(runs)} bản ghi backtest. Gợi ý bên dưới tập trung vào #{r0.get('id','')} và khuyến nghị A/B test với nhiều bản ghi.")
+        elif lang == "ar-SA":
+            lines.append(f"تم استلام {len(runs)} من سجلات الاختبار الخلفي. تركّز الاقتراحات أدناه على التشغيل #{r0.get('id','')} مع توصية باختبارات A/B.")
+        elif lang == "de-DE":
+            lines.append(f"{len(runs)} Backtest-Läufe empfangen. Vorschläge unten fokussieren auf Lauf #{r0.get('id','')}; A/B-Tests über mehrere Läufe empfohlen.")
+        elif lang == "fr-FR":
+            lines.append(f"{len(runs)} exécutions de backtest reçues. Suggestions ci-dessous centrées sur #{r0.get('id','')}; A/B tests recommandés.")
+        elif lang == "ja-JP":
+            lines.append(f"{len(runs)} 件のバックテスト記録を受け取りました。以下は #{r0.get('id','')} を中心に提案し、複数記録でA/B検証を推奨します。")
+        else:
             lines.append(f"Received {len(runs)} backtest runs. Suggestions below focus on run #{r0.get('id','')}; validate with A/B tests across runs.")
-        lines.append(h["overall"])
-    elif lang in ("zh-TW", "zh-CN"):
-        if len(runs) > 1:
-            lines.append(f"Received {len(runs)} backtest runs. Suggestions below focus on run #{r0.get('id','')}; validate with A/B tests across runs.")
-        lines.append(h["overall"])
-    else:
-        if len(runs) > 1:
-            if lang == "ko-KR":
-                lines.append(f"{len(runs)}개의 백테스트 기록을 받았습니다. 아래는 #{r0.get('id','')} 기준으로 제안하며, 여러 기록으로 A/B 검증을 권장합니다.")
-            elif lang == "th-TH":
-                lines.append(f"ได้รับประวัติแบ็กเทสต์ {len(runs)} รายการ ข้อเสนอแนะด้านล่างอิงจาก #{r0.get('id','')} และแนะนำให้ทำ A/B test เทียบหลายชุด")
-            elif lang == "vi-VN":
-                lines.append(f"Đã nhận {len(runs)} bản ghi backtest. Gợi ý bên dưới tập trung vào #{r0.get('id','')} và khuyến nghị A/B test với nhiều bản ghi.")
-            elif lang == "ar-SA":
-                lines.append(f"تم استلام {len(runs)} من سجلات الاختبار الخلفي. تركّز الاقتراحات أدناه على التشغيل #{r0.get('id','')} مع توصية باختبارات A/B.")
-            elif lang == "de-DE":
-                lines.append(f"{len(runs)} Backtest-Läufe empfangen. Vorschläge unten fokussieren auf Lauf #{r0.get('id','')}; A/B-Tests über mehrere Läufe empfohlen.")
-            elif lang == "fr-FR":
-                lines.append(f"{len(runs)} exécutions de backtest reçues. Suggestions ci-dessous centrées sur #{r0.get('id','')}; A/B tests recommandés.")
-            elif lang == "ja-JP":
-                lines.append(f"{len(runs)} 件のバックテスト記録を受け取りました。以下は #{r0.get('id','')} を中心に提案し、複数記録でA/B検証を推奨します。")
-            else:
-                lines.append(f"Received {len(runs)} backtest runs. Suggestions below focus on run #{r0.get('id','')}; validate with A/B tests across runs.")
-        lines.append(h["overall"])
+    lines.append(h["overall"])
     if sharpe < 0 or total_return < 0:
-        if lang in ("en-US", "zh-CN", "zh-TW"):
-            lines.append("- Strategy is losing/unstable: reduce risk first (lower entryPct, fewer/smaller scale-ins), then refine signal filters.")
-        else:
-            lines.append("- Strategy is losing/unstable: reduce risk first (lower entryPct, fewer/smaller scale-ins), then refine signal filters.")
+        lines.append("- Strategy is losing/unstable: reduce risk first (lower entryPct, fewer/smaller scale-ins), then refine signal filters.")
     if max_dd > 30:
-        if lang in ("en-US", "zh-CN", "zh-TW"):
-            lines.append("- Max drawdown is high: tighten stop-loss or reduce leverage/entry size; consider enabling trailing to protect profits.")
-        else:
-            lines.append("- Max drawdown is high: tighten stop-loss or reduce leverage/entry size; consider enabling trailing to protect profits.")
+        lines.append("- Max drawdown is high: tighten stop-loss or reduce leverage/entry size; consider enabling trailing to protect profits.")
     if trades < 10:
-        if lang in ("en-US", "zh-CN", "zh-TW"):
-            lines.append("- Too few trades: rules may be too strict; relax thresholds or remove one filter to get enough samples.")
-        else:
-            lines.append("- Too few trades: rules may be too strict; relax thresholds or remove one filter to get enough samples.")
+        lines.append("- Too few trades: rules may be too strict; relax thresholds or remove one filter to get enough samples.")
     if win_rate < 35 and profit_factor >= 1.2:
-        if lang in ("en-US", "zh-CN", "zh-TW"):
-            lines.append("- Low win rate but decent PF: consider slightly wider stop-loss and use trailing to lock profits.")
-        else:
-            lines.append("- Low win rate but decent PF: consider slightly wider stop-loss and use trailing to lock profits.")
+        lines.append("- Low win rate but decent PF: consider slightly wider stop-loss and use trailing to lock profits.")
     if win_rate >= 55 and profit_factor < 1.1:
-        if lang in ("en-US", "zh-CN", "zh-TW"):
-            lines.append("- Win rate is OK but PF is low: raise take-profit or enable trailing to improve winners; avoid taking profits too early.")
-        else:
-            lines.append("- Win rate is OK but PF is low: raise take-profit or enable trailing to improve winners; avoid taking profits too early.")
+        lines.append("- Win rate is OK but PF is low: raise take-profit or enable trailing to improve winners; avoid taking profits too early.")
 
     lines.append("\n" + h["params"])
     if stop_loss <= 0:
-        if lang in ("en-US", "zh-CN", "zh-TW"):
-            lines.append("- Stop-loss: set stopLossPct (margin PnL basis). For crypto leverage, start with 2%~6% (then consider leverage conversion) and grid test.")
-        else:
-            lines.append("- Stop-loss: set stopLossPct (margin PnL basis). For crypto leverage, start with 2%~6% (then consider leverage conversion) and grid test.")
+        lines.append("- Stop-loss: set stopLossPct (margin PnL basis). For crypto leverage, start with 2%~6% (then consider leverage conversion) and grid test.")
     else:
-        if lang in ("en-US", "zh-CN", "zh-TW"):
-            lines.append(f"- Stop-loss: current stopLossPct={stop_loss:.4f} (margin basis). Test ±30% around it and monitor drawdown/liquidations.")
-        else:
-            lines.append(f"- Stop-loss: current stopLossPct={stop_loss:.4f} (margin basis). Test ±30% around it and monitor drawdown/liquidations.")
+        lines.append(f"- Stop-loss: current stopLossPct={stop_loss:.4f} (margin basis). Test ±30% around it and monitor drawdown/liquidations.")
     if take_profit > 0 and (not trailing_enabled):
-        if lang in ("en-US", "zh-CN", "zh-TW"):
-            lines.append(f"- Take-profit: current takeProfitPct={take_profit:.4f}. Also test enabling trailing to reduce profit giveback.")
-        else:
-            lines.append(f"- Take-profit: current takeProfitPct={take_profit:.4f}. Also test enabling trailing to reduce profit giveback.")
+        lines.append(f"- Take-profit: current takeProfitPct={take_profit:.4f}. Also test enabling trailing to reduce profit giveback.")
     if trailing_enabled:
-        if lang in ("en-US", "zh-CN", "zh-TW"):
-            lines.append(f"- Trailing: enabled, pct={trailing_pct:.4f}, activationPct={trailing_act:.4f}. Set activation near typical winner PnL and test pct at 0.5x~1.5x.")
-        else:
-            lines.append(f"- Trailing: enabled, pct={trailing_pct:.4f}, activationPct={trailing_act:.4f}. Set activation near typical winner PnL and test pct at 0.5x~1.5x.")
+        lines.append(f"- Trailing: enabled, pct={trailing_pct:.4f}, activationPct={trailing_act:.4f}. Set activation near typical winner PnL and test pct at 0.5x~1.5x.")
     else:
-        if lang in ("en-US", "zh-CN", "zh-TW"):
-            lines.append("- Trailing: consider trailing.enabled=true; start with pct=1%~3% (margin basis) and test.")
-        else:
-            lines.append("- Trailing: consider trailing.enabled=true; start with pct=1%~3% (margin basis) and test.")
-    if lang in ("en-US", "zh-CN", "zh-TW"):
-        lines.append(f"- Entry sizing: entryPct={entry_pct:.4f}. Test 0.2/0.3/0.5/0.8 to find a better return/drawdown sweet spot.")
-    else:
-        lines.append(f"- Entry sizing: entryPct={entry_pct:.4f}. Test 0.2/0.3/0.5/0.8 to find a better return/drawdown sweet spot.")
+        lines.append("- Trailing: consider trailing.enabled=true; start with pct=1%~3% (margin basis) and test.")
+    lines.append(f"- Entry sizing: entryPct={entry_pct:.4f}. Test 0.2/0.3/0.5/0.8 to find a better return/drawdown sweet spot.")
 
     # Scaling (very light guidance)
     if isinstance(trend_add, dict) and trend_add.get("enabled"):
@@ -690,7 +643,7 @@ def ai_analyze_backtest_runs():
                        start_date, end_date, initial_capital, commission, slippage,
                        leverage, trade_direction, strategy_config, status, error_message,
                        result_json, created_at
-                FROM qd_backtest_runs
+                FROM ml_backtest_runs
                 WHERE user_id = ? AND id IN ({placeholders})
                 ORDER BY id DESC
                 """,

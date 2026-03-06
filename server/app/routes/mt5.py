@@ -239,7 +239,7 @@ def place_order():
         volume = data.get("volume") or data.get("quantity")
         order_type = data.get("orderType", "market").lower()
         price = data.get("price")
-        comment = data.get("comment", "Zing")
+        comment = data.get("comment", "MarketLabs")
         
         if not symbol or not side or not volume:
             return jsonify({

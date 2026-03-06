@@ -1,5 +1,5 @@
 """
-Health check routes.
+Health Check Routes
 """
 from flask import Blueprint, jsonify
 from datetime import datetime
@@ -9,9 +9,9 @@ health_bp = Blueprint('health', __name__)
 
 @health_bp.route('/', methods=['GET'])
 def index():
-    """API root."""
+    """API home page."""
     return jsonify({
-        'name': 'Zing Python API',
+        'name': 'MarketLabs Python API',
         'version': '2.0.0',
         'status': 'running',
         'timestamp': datetime.now().isoformat()
@@ -29,5 +29,5 @@ def health_check():
 
 @health_bp.route('/api/health', methods=['GET'])
 def api_health_check():
-    """Alias path for container/reverse-proxy health probes."""
+    """Compatibility path: used for container health checks / reverse-proxy probes."""
     return health_check()

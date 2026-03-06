@@ -1,6 +1,5 @@
 """
-Data source factory.
-Returns the appropriate data source for each market type.
+Data source factory - returns the data source for the given market type.
 """
 from typing import Dict, List, Any, Optional
 
@@ -18,13 +17,13 @@ class DataSourceFactory:
     @classmethod
     def get_source(cls, market: str) -> BaseDataSource:
         """
-        Get the data source for the given market.
+        Get data source for the given market.
 
         Args:
             market: Market type (Crypto, USStock, Forex, Futures)
 
         Returns:
-            Data source instance
+            Data source instance.
         """
         if market not in cls._sources:
             cls._sources[market] = cls._create_source(market)
@@ -43,11 +42,12 @@ class DataSourceFactory:
             return cls.get_source("Crypto")
         if key in ("futures",):
             return cls.get_source("Futures")
+        # Default to Crypto for safety (most callers want a ticker for crypto pairs).
         return cls.get_source("Crypto")
-
+    
     @classmethod
     def _create_source(cls, market: str) -> BaseDataSource:
-        """Create a data source instance."""
+        """Create data source instance."""
         if market == 'Crypto':
             from app.data_sources.crypto import CryptoDataSource
             return CryptoDataSource()
@@ -62,7 +62,7 @@ class DataSourceFactory:
             return FuturesDataSource()
         else:
             raise ValueError(f"Unsupported market type: {market}")
-
+    
     @classmethod
     def get_kline(
         cls,
@@ -73,38 +73,40 @@ class DataSourceFactory:
         before_time: Optional[int] = None
     ) -> List[Dict[str, Any]]:
         """
-        Convenience method to get K-line data.
+        Convenience method to get kline data.
 
         Args:
             market: Market type
-            symbol: Trading pair or stock symbol
-            timeframe: Time period
-            limit: Number of candles
-            before_time: Data before this time
+            symbol: Symbol / stock code
+            timeframe: Timeframe
+            limit: Number of bars
+            before_time: Get data before this time
 
         Returns:
-            List of K-line dicts
+            List of kline dicts.
         """
         try:
             source = cls.get_source(market)
             klines = source.get_kline(symbol, timeframe, limit, before_time)
+
             klines.sort(key=lambda x: x['time'])
+            
             return klines
         except Exception as e:
             logger.error(f"Failed to fetch K-lines {market}:{symbol} - {str(e)}")
             return []
-
+    
     @classmethod
     def get_ticker(cls, market: str, symbol: str) -> Dict[str, Any]:
         """
-        Convenience method to get realtime quote.
+        Convenience method to get real-time ticker.
 
         Args:
             market: Market type
-            symbol: Trading pair or stock symbol
+            symbol: Symbol / stock code
 
         Returns:
-            Ticker data: {'last', 'change', 'changePercent', ...}
+            Ticker dict (last, change, changePercent, ...).
         """
         try:
             source = cls.get_source(market)
@@ -115,3 +117,4 @@ class DataSourceFactory:
         except Exception as e:
             logger.error(f"Failed to fetch ticker {market}:{symbol} - {str(e)}")
             return {'last': 0, 'symbol': symbol}
+

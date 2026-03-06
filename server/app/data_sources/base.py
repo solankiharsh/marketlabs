@@ -1,5 +1,5 @@
 """
-Base data source class.
+Data source base class.
 Defines a unified data source interface.
 """
 from abc import ABC, abstractmethod
@@ -11,7 +11,7 @@ from app.utils.logger import get_logger
 logger = get_logger(__name__)
 
 
-# K-line timeframe to seconds mapping
+# K-line period mapping (seconds)
 TIMEFRAME_SECONDS = {
     '1m': 60,
     '5m': 300,
@@ -25,10 +25,10 @@ TIMEFRAME_SECONDS = {
 
 
 class BaseDataSource(ABC):
-    """Base data source class."""
-
+    """Data source base class"""
+    
     name: str = "base"
-
+    
     @abstractmethod
     def get_kline(
         self,
@@ -38,16 +38,16 @@ class BaseDataSource(ABC):
         before_time: Optional[int] = None
     ) -> List[Dict[str, Any]]:
         """
-        Get K-line (OHLCV) data.
-
+        Get K-line data
+        
         Args:
-            symbol: Trading pair or stock symbol
+            symbol: Trading pair/stock code
             timeframe: Time period (1m, 5m, 15m, 30m, 1H, 4H, 1D, 1W)
-            limit: Number of candles
-            before_time: Data before this time (Unix timestamp, seconds)
-
+            limit: Number of data points
+            before_time: Get data before this time (Unix timestamp, seconds)
+            
         Returns:
-            List of K-line dicts:
+            K-line data list, format:
             [{"time": int, "open": float, "high": float, "low": float, "close": float, "volume": float}, ...]
         """
         pass
@@ -60,7 +60,7 @@ class BaseDataSource(ABC):
         Implementations may return a dict compatible with CCXT `fetch_ticker` shape (e.g. {'last': ...}).
         """
         raise NotImplementedError("get_ticker is not implemented for this data source")
-
+    
     def format_kline(
         self,
         timestamp: int,
@@ -70,7 +70,7 @@ class BaseDataSource(ABC):
         close: float,
         volume: float
     ) -> Dict[str, Any]:
-        """Format a single K-line record."""
+        """Format single K-line data"""
         return {
             'time': timestamp,
             'open': round(float(open_price), 4),
@@ -79,7 +79,7 @@ class BaseDataSource(ABC):
             'close': round(float(close), 4),
             'volume': round(float(volume), 2)
         }
-
+    
     def calculate_time_range(
         self,
         timeframe: str,
@@ -87,19 +87,19 @@ class BaseDataSource(ABC):
         buffer_ratio: float = 1.2
     ) -> int:
         """
-        Calculate time range in seconds needed for the given number of candles.
-
+        Calculate the time range needed to get the specified number of K-line data (seconds)
+        
         Args:
             timeframe: Time period
-            limit: Number of candles
-            buffer_ratio: Buffer multiplier
-
+            limit: Number of K-line data
+            buffer_ratio: Buffer coefficient
+            
         Returns:
-            Time range in seconds
+            Time range (seconds)
         """
         seconds_per_candle = TIMEFRAME_SECONDS.get(timeframe, 86400)
         return int(seconds_per_candle * limit * buffer_ratio)
-
+    
     def filter_and_limit(
         self,
         klines: List[Dict[str, Any]],
@@ -107,38 +107,48 @@ class BaseDataSource(ABC):
         before_time: Optional[int] = None
     ) -> List[Dict[str, Any]]:
         """
-        Filter and limit K-line data.
-
+        Filter and limit K-line data
+        
         Args:
-            klines: List of K-line dicts
-            limit: Maximum count
-            before_time: Drop candles after this time
-
+            klines: K-line data list
+            limit: Maximum number
+            before_time: Filter data after this time
+            
         Returns:
-            Filtered and limited K-line list
+            Processed K-line data
         """
+        # Sort by time
         klines.sort(key=lambda x: x['time'])
-
+        
+        # Filter time
         if before_time:
             klines = [k for k in klines if k['time'] < before_time]
-
+        
+        # Limit number (take the latest)
         if len(klines) > limit:
             klines = klines[-limit:]
-
+        
         return klines
-
+    
     def log_result(
         self,
         symbol: str,
         klines: List[Dict[str, Any]],
         timeframe: str
     ):
-        """Log fetch result."""
+        """Log the result of getting data"""
         if klines:
             latest_time = datetime.fromtimestamp(klines[-1]['time'])
             time_diff = (datetime.now() - latest_time).total_seconds()
+            # logger.info(
+            #     f"{self.name}: {symbol} get {len(klines)} data, "
+            #     f"latest time: {latest_time}, delay: {time_diff:.0f} seconds"
+            # )
+            
+            # Check if the data is too old
             max_diff = TIMEFRAME_SECONDS.get(timeframe, 3600) * 2
             if time_diff > max_diff:
-                logger.warning(f"Warning: {symbol} data is delayed ({time_diff:.0f}s)")
+                logger.warning(f"Warning: {symbol} data is delayed ({time_diff:.0f} seconds)")
         else:
             logger.warning(f"{self.name}: no data for {symbol}")
+

@@ -91,7 +91,7 @@ class EmailService:
                 # Invalidate any existing unused codes of the same type for this email
                 cur.execute(
                     """
-                    UPDATE qd_verification_codes 
+                    UPDATE ml_verification_codes 
                     SET used_at = NOW() 
                     WHERE email = ? AND type = ? AND used_at IS NULL
                     """,
@@ -101,7 +101,7 @@ class EmailService:
                 # Insert new code
                 cur.execute(
                     """
-                    INSERT INTO qd_verification_codes 
+                    INSERT INTO ml_verification_codes 
                     (email, code, type, expires_at, ip_address)
                     VALUES (?, ?, ?, ?, ?)
                     """,
@@ -136,7 +136,7 @@ class EmailService:
                 lock_window = datetime.now() - timedelta(minutes=self.code_lock_minutes)
                 cur.execute(
                     """
-                    SELECT COUNT(*) as cnt FROM qd_verification_codes
+                    SELECT COUNT(*) as cnt FROM ml_verification_codes
                     WHERE email = ? AND type = ?
                     AND attempts >= ? AND last_attempt_at > ?
                     AND used_at IS NULL
@@ -151,7 +151,7 @@ class EmailService:
                 # Find latest unused code for this email/type
                 cur.execute(
                     """
-                    SELECT id, code as stored_code, expires_at, attempts FROM qd_verification_codes
+                    SELECT id, code as stored_code, expires_at, attempts FROM ml_verification_codes
                     WHERE email = ? AND type = ? AND used_at IS NULL
                     ORDER BY created_at DESC
                     LIMIT 1
@@ -174,7 +174,7 @@ class EmailService:
                     new_attempts = attempts + 1
                     cur.execute(
                         """
-                        UPDATE qd_verification_codes 
+                        UPDATE ml_verification_codes 
                         SET attempts = ?, last_attempt_at = NOW()
                         WHERE id = ?
                         """,
@@ -199,7 +199,7 @@ class EmailService:
                 
                 # Mark as used
                 cur.execute(
-                    "UPDATE qd_verification_codes SET used_at = NOW() WHERE id = ?",
+                    "UPDATE ml_verification_codes SET used_at = NOW() WHERE id = ?",
                     (code_id,)
                 )
                 db.commit()
@@ -296,28 +296,28 @@ class EmailService:
         
         # Prepare email content based on type
         if code_type == 'register':
-            subject = 'Zing - Verification Code for Registration'
+            subject = 'MarketLabs - Verification Code for Registration'
             action_text = 'complete your registration'
         elif code_type == 'login':
-            subject = 'Zing - Quick Login Verification Code'
+            subject = 'MarketLabs - Quick Login Verification Code'
             action_text = 'log in to your account'
         elif code_type == 'reset_password':
-            subject = 'Zing - Password Reset Verification Code'
+            subject = 'MarketLabs - Password Reset Verification Code'
             action_text = 'reset your password'
         elif code_type == 'change_password':
-            subject = 'Zing - Verification Code for Password Change'
+            subject = 'MarketLabs - Verification Code for Password Change'
             action_text = 'change your password'
         elif code_type == 'change_email':
-            subject = 'Zing - Verification Code for Email Change'
+            subject = 'MarketLabs - Verification Code for Email Change'
             action_text = 'change your email address'
         else:
-            subject = 'Zing - Verification Code'
+            subject = 'MarketLabs - Verification Code'
             action_text = 'complete the verification'
         
         html_body = f"""
         <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
             <div style="text-align: center; margin-bottom: 30px;">
-                <h1 style="color: #1890ff; margin: 0;">Zing</h1>
+                <h1 style="color: #1890ff; margin: 0;">MarketLabs</h1>
                 <p style="color: #666; margin-top: 5px;">AI-Driven Quantitative Insights</p>
             </div>
             
@@ -341,7 +341,7 @@ class EmailService:
             </div>
             
             <div style="text-align: center; margin-top: 30px; color: #999; font-size: 12px;">
-                <p>&copy; Zing. All rights reserved.</p>
+                <p>&copy; MarketLabs. All rights reserved.</p>
             </div>
         </div>
         """

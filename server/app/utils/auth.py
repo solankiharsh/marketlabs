@@ -35,7 +35,7 @@ def generate_token(user_id: int, username: str, role: str = 'user', token_versio
             'sub': username,
             'user_id': user_id,
             'role': role,
-            'token_version': token_version,  # For single-client login enforcement
+            'token_version': token_version,  # single-client login control
         }
         return jwt.encode(
             payload,
@@ -62,12 +62,7 @@ def verify_token(token: str) -> dict:
         
         user_id = payload.get('user_id')
         token_version = payload.get('token_version')
-        
-        # Legacy admin (user_id=1): skip token_version check so login works without DB or when DB is out of sync
-        if user_id == 1:
-            return payload
-        
-        # Verify token_version (single-client login) for non-legacy users
+
         if user_id and token_version is not None:
             if not _verify_token_version(user_id, token_version):
                 logger.debug(f"Token version mismatch for user {user_id}: expected current, got {token_version}")
@@ -78,52 +73,40 @@ def verify_token(token: str) -> dict:
         logger.debug("Token expired")
         return None
     except jwt.InvalidTokenError as e:
-        logger.debug("Invalid token: %s", e)
+        logger.debug(f"Invalid token: {e}")
         return None
 
 
 def _verify_token_version(user_id: int, token_version: int) -> bool:
     """
-    Verify that the token version matches the version stored in the database.
-    Used for single-client login (kick duplicate sessions).
-    When PostgreSQL is unavailable, skip the check so legacy single-user mode can still verify tokens.
+    Verify token version matches DB (single-client login / kick duplicate login).
 
     Args:
         user_id: User ID
-        token_version: Version number in the token
+        token_version: Version in token
 
     Returns:
-        True if version matches, False otherwise
+        True if version matches, False otherwise.
     """
     try:
-        from app.utils.db import is_postgres_available
-        if not is_postgres_available():
-            return True
         from app.utils.db import get_db_connection
         with get_db_connection() as db:
             cur = db.cursor()
             cur.execute(
-                "SELECT token_version FROM qd_users WHERE id = ?",
+                "SELECT token_version FROM ml_users WHERE id = ?",
                 (user_id,)
             )
             row = cur.fetchone()
             cur.close()
             
-            # No row: allow only user_id=1 (legacy admin) so login works before qd_users is populated
             if not row:
-                return user_id == 1
+                return False
             
-            db_token_version = int(row.get('token_version') or 1)
-            if int(token_version) == db_token_version:
-                return True
-            # Legacy admin (user_id=1) may have token_version=1 when DB was missing or increment failed; allow it
-            if user_id == 1 and token_version == 1:
-                return True
-            return False
+            db_token_version = row.get('token_version') or 1
+            return int(token_version) == int(db_token_version)
     except Exception as e:
         logger.error(f"_verify_token_version failed: {e}")
-        # Allow legacy user_id=1 when DB fails so login still works without/with broken DB
-        return user_id == 1
+        return False
 
 
 def get_current_user_id() -> int:

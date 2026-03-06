@@ -308,7 +308,7 @@ def get_trades():
             cur.execute(
                 """
                 SELECT id, strategy_id, symbol, type, price, amount, value, commission, commission_ccy, profit, created_at
-                FROM qd_strategy_trades
+                FROM ml_strategy_trades
                 WHERE strategy_id = ?
                 ORDER BY id DESC
                 """,
@@ -366,7 +366,7 @@ def get_positions():
                 """
                 SELECT id, strategy_id, symbol, side, size, entry_price, current_price, highest_price,
                        unrealized_pnl, pnl_percent, equity, updated_at
-                FROM qd_strategy_positions
+                FROM ml_strategy_positions
                 WHERE strategy_id = ?
                 ORDER BY id DESC
                 """,
@@ -427,7 +427,6 @@ def get_positions():
                 pct = _calc_pnl_percent(entry, size, pnl)
 
                 rr = dict(r)
-                # 确保 entry_price 有值（如果数据库中是 NULL，使用计算出的 entry 值）
                 if not rr.get("entry_price") or float(rr.get("entry_price") or 0.0) <= 0:
                     rr["entry_price"] = float(entry or 0.0)
                 else:
@@ -441,7 +440,7 @@ def get_positions():
                 try:
                     cur.execute(
                         """
-                        UPDATE qd_strategy_positions
+                        UPDATE ml_strategy_positions
                         SET current_price = ?, unrealized_pnl = ?, pnl_percent = ?, updated_at = NOW()
                         WHERE id = ?
                         """,
@@ -481,7 +480,7 @@ def get_equity_curve():
             cur.execute(
                 """
                 SELECT created_at, profit
-                FROM qd_strategy_trades
+                FROM ml_strategy_trades
                 WHERE strategy_id = ?
                 ORDER BY created_at ASC
                 """,
@@ -640,15 +639,12 @@ def test_connection():
     Test exchange connection.
     
     Request body:
-        exchange_config: Exchange configuration (may contain credential_id or inline keys)
+        exchange_config: Exchange configuration
     """
     try:
         data = request.get_json() or {}
         
-        # 记录请求数据（用于调试，但不记录敏感信息）
         logger.debug(f"Connection test request keys: {list(data.keys())}")
-        
-        # 获取交易所配置
         exchange_config = data.get('exchange_config', data)
         
         # Local deployment: no encryption/decryption; accept dict or JSON string.
@@ -659,43 +655,30 @@ def test_connection():
             except Exception:
                 pass
         
-        # 验证 exchange_config 是否为字典
         if not isinstance(exchange_config, dict):
             logger.error(f"Invalid exchange_config type: {type(exchange_config)}, data: {str(exchange_config)[:200]}")
             # Frontend expects HTTP 200 with {code:0} for business failures.
             return jsonify({'code': 0, 'msg': 'Invalid exchange config format; please check your payload', 'data': None})
-
-        # Resolve credential_id → full config (merges credential keys with any overrides).
-        # This allows the frontend to send just {credential_id: 5} without raw api_key/secret_key.
-        from app.services.exchange_execution import resolve_exchange_config
-        user_id = g.user_id if hasattr(g, 'user_id') else 1
-        resolved = resolve_exchange_config(exchange_config, user_id=user_id)
-
-        # 验证必要字段 (check resolved config after credential merge)
-        if not resolved.get('exchange_id'):
+        
+        if not exchange_config.get('exchange_id'):
             return jsonify({'code': 0, 'msg': 'Please select an exchange', 'data': None})
         
-        api_key = resolved.get('api_key', '')
-        secret_key = resolved.get('secret_key', '')
+        api_key = exchange_config.get('api_key', '')
+        secret_key = exchange_config.get('secret_key', '')
         
-        # 详细日志排查
-        logger.info(f"Testing connection: exchange_id={resolved.get('exchange_id')}")
-        if api_key:
-            logger.info(f"API Key: {api_key[:5]}... (len={len(api_key)})")
-        if secret_key:
-            logger.info(f"Secret Key: {secret_key[:5]}... (len={len(secret_key)})")
+        logger.info(f"Testing connection: exchange_id={exchange_config.get('exchange_id')}")
+        logger.info(f"API Key: {api_key[:5]}... (len={len(api_key)})")
+        logger.info(f"Secret Key: {secret_key[:5]}... (len={len(secret_key)})")
         
-        # 检查是否有特殊字符
-        if api_key and api_key.strip() != api_key:
+        if api_key.strip() != api_key:
             logger.warning("API key contains leading/trailing whitespace")
-        if secret_key and secret_key.strip() != secret_key:
+        if secret_key.strip() != secret_key:
             logger.warning("Secret key contains leading/trailing whitespace")
             
         if not api_key or not secret_key:
             return jsonify({'code': 0, 'msg': 'Please provide API key and secret key', 'data': None})
         
-        # Pass the resolved config (with actual keys) to the service
-        result = get_strategy_service().test_exchange_connection(resolved)
+        result = get_strategy_service().test_exchange_connection(exchange_config)
         
         if result['success']:
             return jsonify({'code': 1, 'msg': result.get('message') or 'Connection successful', 'data': result.get('data')})
@@ -825,7 +808,7 @@ def get_strategy_notifications():
         user_strategy_ids = []
         with get_db_connection() as db:
             cur = db.cursor()
-            cur.execute("SELECT id FROM qd_strategies_trading WHERE user_id = ?", (user_id,))
+            cur.execute("SELECT id FROM ml_strategies_trading WHERE user_id = ?", (user_id,))
             rows = cur.fetchall() or []
             user_strategy_ids = [r.get('id') for r in rows if r.get('id')]
             cur.close()
@@ -861,7 +844,7 @@ def get_strategy_notifications():
             cur.execute(
                 f"""
                 SELECT *
-                FROM qd_strategy_notifications
+                FROM ml_strategy_notifications
                 {where_sql}
                 ORDER BY id DESC
                 LIMIT ?
@@ -911,9 +894,9 @@ def mark_notification_read():
             cur = db.cursor()
             cur.execute(
                 """
-                UPDATE qd_strategy_notifications SET is_read = 1 
+                UPDATE ml_strategy_notifications SET is_read = 1 
                 WHERE id = ? AND (
-                    strategy_id IN (SELECT id FROM qd_strategies_trading WHERE user_id = ?)
+                    strategy_id IN (SELECT id FROM ml_strategies_trading WHERE user_id = ?)
                     OR (strategy_id IS NULL AND user_id = ?)
                 )
                 """,
@@ -938,8 +921,8 @@ def mark_all_notifications_read():
             cur = db.cursor()
             cur.execute(
                 """
-                UPDATE qd_strategy_notifications SET is_read = 1 
-                WHERE strategy_id IN (SELECT id FROM qd_strategies_trading WHERE user_id = ?)
+                UPDATE ml_strategy_notifications SET is_read = 1 
+                WHERE strategy_id IN (SELECT id FROM ml_strategies_trading WHERE user_id = ?)
                    OR (strategy_id IS NULL AND user_id = ?)
                 """,
                 (user_id, user_id)
@@ -963,8 +946,8 @@ def clear_notifications():
             cur = db.cursor()
             cur.execute(
                 """
-                DELETE FROM qd_strategy_notifications 
-                WHERE strategy_id IN (SELECT id FROM qd_strategies_trading WHERE user_id = ?)
+                DELETE FROM ml_strategy_notifications 
+                WHERE strategy_id IN (SELECT id FROM ml_strategies_trading WHERE user_id = ?)
                    OR (strategy_id IS NULL AND user_id = ?)
                 """,
                 (user_id, user_id)

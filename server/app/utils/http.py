@@ -1,5 +1,5 @@
 """
-HTTP 工具模块
+HTTP utility module
 """
 import requests
 from requests.adapters import HTTPAdapter
@@ -12,15 +12,15 @@ def get_retry_session(
     status_forcelist: tuple = (500, 502, 503, 504)
 ) -> requests.Session:
     """
-    获取带重试机制的 HTTP Session
-    
+    Get an HTTP Session with retry mechanism
+
     Args:
-        retries: 重试次数
-        backoff_factor: 重试间隔因子
-        status_forcelist: 需要重试的 HTTP 状态码
-        
+        retries: Number of retries
+        backoff_factor: Retry backoff factor
+        status_forcelist: HTTP status codes that trigger a retry
+
     Returns:
-        配置好的 Session 实例
+        Configured Session instance
     """
     session = requests.Session()
     retry = Retry(
@@ -36,6 +36,6 @@ def get_retry_session(
     return session
 
 
-# 全局共享 Session
+# Global shared Session
 global_session = get_retry_session()
 

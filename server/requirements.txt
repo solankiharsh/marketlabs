@@ -1,14 +1,8 @@
-# Recommended: Python 3.10, 3.11, 3.12, or 3.13. Python 3.14 is not fully supported
-# by some dependencies (e.g. coincurve used by bip-utils). For USDT/HD wallet
-# support, use Python 3.10–3.13 and: pip install -r requirements-usdt.txt
-
 Flask==2.3.3
 flask-cors==4.0.0
-gunicorn>=21.0.0
 finnhub-python>=2.4.18
 yfinance>=0.2.18
-# Pin below 4.3.x to avoid ModuleNotFoundError: ccxt.static_dependencies.lighter_client on some installs
-ccxt>=4.0.0,<4.3.0
+ccxt>=4.0.0
 pandas>=1.5.0
 requests>=2.28.0
 PySocks>=1.7.1
@@ -17,6 +11,8 @@ pymysql>=1.0.2
 SQLAlchemy>=2.0.0
 PyJWT==2.8.0
 python-dotenv>=1.0.1
+# HD wallet derivation (xpub -> address) for USDT payments
+# bip-utils>=2.9.0  # Optional: requires coincurve (C extension); install manually if needed
 # PostgreSQL support (multi-user mode)
 psycopg2-binary>=2.9.9
 # Password hashing

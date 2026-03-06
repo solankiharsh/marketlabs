@@ -1,19 +1,19 @@
 """
-Backfill qd_strategy_trades rows where price/amount/value are 0.
+Backfill historical ml_strategy_trades with price/amount/value = 0.
 
 Background:
-- For some exchanges/order types, the executor may report filled_price/filled_amount as 0
-  while the exchange actually filled the order, so trade discipline/history shows zeros.
-- OrderProcessor now has fetch_order/fetch_my_trades backfill logic to avoid new data having this issue.
-- For historical dirty data, use qd_pending_orders (executed_at, filled_price, filled_amount, fee) for approximate matching and backfill.
+- In some exchanges/order types, filled_price/filled_amount may be 0 in executor reports,
+  but the exchange actually executed, causing transaction discipline/trade records to show 0.
+- We now have "fetch_order/fetch_my_trades backfill" logic in OrderProcessor to avoid this problem.
+- For historical dirty data, we can use executed_at/filled_price/filled_amount/fee in ml_pending_orders for approximate matching.
 
 Usage:
   python server/scripts/backfill_zero_trades.py --strategy-id 43 --since 2025-12-24 --until 2025-12-25
   python server/scripts/backfill_zero_trades.py --strategy-id 43 --since 2025-12-24 --until 2025-12-25 --apply
 
-Notes:
-- Script matches qd_pending_orders by (strategy_id, symbol, type) and time window (default ±600s).
-- If one trade matches multiple candidate orders, the one with executed_at closest to the trade is chosen; ties are skipped.
+Note:
+- This script matches ml_pending_orders by (strategy_id, symbol, type) + time window (default ±600s).
+- If multiple candidates are found for a trade, the one with executed_at closest will be chosen; if still not unique, skip.
 """
 
 from __future__ import annotations
@@ -28,15 +28,15 @@ from app.utils.db import get_db_connection
 
 def _parse_date_to_ts(s: str) -> int:
     s = (s or "").strip()
-    # Supports YYYY-MM-DD or YYYY/MM/DD
+    # Support YYYY-MM-DD or YYYY/MM/DD
     for fmt in ("%Y-%m-%d", "%Y/%m/%d", "%Y-%m-%d %H:%M:%S", "%Y/%m/%d %H:%M:%S"):
         try:
             dt = datetime.strptime(s, fmt)
-            # Server typically writes int(time.time()) in local time; parse as local time here
+            # Server usually writes int(time.time()) in local time; parse here in local time
             return int(dt.replace(tzinfo=None).timestamp())
         except Exception:
             pass
-    raise ValueError(f"Could not parse date: {s}")
+    raise ValueError(f"Cannot parse date: {s}")
 
 
 def _fetch_bad_trades(strategy_id: int, since_ts: int, until_ts: int, limit: int) -> List[Dict[str, Any]]:
@@ -45,7 +45,7 @@ def _fetch_bad_trades(strategy_id: int, since_ts: int, until_ts: int, limit: int
         cursor.execute(
             """
             SELECT id, strategy_id, symbol, type, price, amount, value, commission, profit, created_at
-            FROM qd_strategy_trades
+            FROM ml_strategy_trades
             WHERE strategy_id = %s
               AND created_at BETWEEN %s AND %s
               AND (
@@ -77,7 +77,7 @@ def _find_best_order_match(
         cursor.execute(
             """
             SELECT id, symbol, signal_type, status, order_id, filled_amount, filled_price, fee, executed_at, created_at
-            FROM qd_pending_orders
+            FROM ml_pending_orders
             WHERE strategy_id = %s
               AND symbol = %s
               AND signal_type = %s
@@ -95,7 +95,7 @@ def _find_best_order_match(
         cursor.close()
         if not cand:
             return None
-        # If the closest match is tied (e.g. same executed_at), treat as non-unique and skip to avoid wrong backfill
+        # If there are multiple candidates with same executed_at, consider not unique, skip to avoid mis-backfill
         if len(cand) >= 2 and abs(int(cand[0]["executed_at"]) - trade_ts) == abs(int(cand[1]["executed_at"]) - trade_ts):
             return None
         return cand[0]
@@ -115,7 +115,7 @@ def _update_trade(
         cursor = db.cursor()
         cursor.execute(
             """
-            UPDATE qd_strategy_trades
+            UPDATE ml_strategy_trades
             SET price=%s, amount=%s, value=%s, commission=%s
             WHERE id=%s
             """,
@@ -130,9 +130,9 @@ def main() -> None:
     ap.add_argument("--strategy-id", type=int, required=True)
     ap.add_argument("--since", type=str, required=True, help="YYYY-MM-DD or YYYY/MM/DD")
     ap.add_argument("--until", type=str, required=True, help="YYYY-MM-DD or YYYY/MM/DD")
-    ap.add_argument("--window-sec", type=int, default=600, help="Match window in seconds (default ±600)")
+    ap.add_argument("--window-sec", type=int, default=600, help="Matching window, default ±600s")
     ap.add_argument("--limit", type=int, default=500, help="Max number of trades to process")
-    ap.add_argument("--apply", action="store_true", help="Write to DB; default is dry-run (print only)")
+    ap.add_argument("--apply", action="store_true", help="Actually write to db; default dry-run prints only")
     args = ap.parse_args()
 
     since_ts = _parse_date_to_ts(args.since)

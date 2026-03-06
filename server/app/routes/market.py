@@ -44,7 +44,7 @@ def _ensure_watchlist_table():
 def get_public_config():
     """
     Public config for frontend (local mode).
-    Mirrors the old PHP `/addons/zing/index/getConfig` shape.
+    Mirrors the old PHP `/addons/marketlabs/index/getConfig` shape.
     """
     try:
         cfg = load_addon_config()
@@ -145,7 +145,7 @@ def get_menu_footer_config():
             'user_agreement': '',
             'privacy_policy': ''
         },
-        'copyright': '© 2025-2026 Zing'
+        'copyright': '© 2025-2026 MarketLabs'
     }
     return jsonify({'code': 1, 'msg': 'success', 'data': data})
 
@@ -164,76 +164,23 @@ def search_symbols():
             return jsonify({'code': 1, 'msg': 'success', 'data': []})
 
         out = seed_search_symbols(market=market, keyword=keyword, limit=limit)
-        if not out and market:
-            fallback = _HOT_SYMBOLS_FALLBACK.get(market, _HOT_SYMBOLS_FALLBACK.get('Crypto', []))
-            out = [x for x in fallback if keyword in (x.get('symbol') or '').upper() or keyword in (x.get('name') or '').upper()][:limit]
         return jsonify({'code': 1, 'msg': 'success', 'data': out})
     except Exception as e:
-        logger.debug("search_symbols failed, using fallback filter: %s", e)
-        market = (request.args.get('market') or '').strip() or 'Crypto'
-        keyword = (request.args.get('keyword') or '').strip().upper()
-        limit = int(request.args.get('limit') or 20)
-        fallback = _HOT_SYMBOLS_FALLBACK.get(market, _HOT_SYMBOLS_FALLBACK.get('Crypto', []))
-        out = [x for x in fallback if keyword in (x.get('symbol') or '').upper() or keyword in (x.get('name') or '').upper()][:limit]
-        return jsonify({'code': 1, 'msg': 'success', 'data': out})
-
-# Fallback hot symbols when DB is unavailable (e.g. no PostgreSQL)
-_HOT_SYMBOLS_FALLBACK = {
-    'Crypto': [
-        {'symbol': 'BTC', 'name': 'Bitcoin', 'market': 'Crypto'},
-        {'symbol': 'ETH', 'name': 'Ethereum', 'market': 'Crypto'},
-        {'symbol': 'BTC/USDT', 'name': 'Bitcoin', 'market': 'Crypto'},
-        {'symbol': 'ETH/USDT', 'name': 'Ethereum', 'market': 'Crypto'},
-        {'symbol': 'SOL', 'name': 'Solana', 'market': 'Crypto'},
-        {'symbol': 'XRP', 'name': 'Ripple', 'market': 'Crypto'},
-        {'symbol': 'DOGE', 'name': 'Dogecoin', 'market': 'Crypto'},
-        {'symbol': 'ADA', 'name': 'Cardano', 'market': 'Crypto'},
-        {'symbol': 'AVAX', 'name': 'Avalanche', 'market': 'Crypto'},
-        {'symbol': 'LINK', 'name': 'Chainlink', 'market': 'Crypto'},
-    ],
-    'USStock': [
-        {'symbol': 'AAPL', 'name': 'Apple Inc.', 'market': 'USStock'},
-        {'symbol': 'MSFT', 'name': 'Microsoft', 'market': 'USStock'},
-        {'symbol': 'GOOGL', 'name': 'Alphabet (Google)', 'market': 'USStock'},
-        {'symbol': 'AMZN', 'name': 'Amazon', 'market': 'USStock'},
-        {'symbol': 'NVDA', 'name': 'NVIDIA', 'market': 'USStock'},
-        {'symbol': 'TSLA', 'name': 'Tesla', 'market': 'USStock'},
-        {'symbol': 'META', 'name': 'Meta Platforms', 'market': 'USStock'},
-        {'symbol': 'JPM', 'name': 'JPMorgan Chase', 'market': 'USStock'},
-    ],
-    'Forex': [
-        {'symbol': 'EURUSD', 'name': 'Euro / US Dollar', 'market': 'Forex'},
-        {'symbol': 'GBPUSD', 'name': 'British Pound / US Dollar', 'market': 'Forex'},
-        {'symbol': 'USDJPY', 'name': 'US Dollar / Japanese Yen', 'market': 'Forex'},
-        {'symbol': 'XAUUSD', 'name': 'Gold / US Dollar', 'market': 'Forex'},
-        {'symbol': 'AUDUSD', 'name': 'Australian Dollar / US Dollar', 'market': 'Forex'},
-    ],
-    'Futures': [
-        {'symbol': 'ES', 'name': 'E-mini S&P 500', 'market': 'Futures'},
-        {'symbol': 'NQ', 'name': 'E-mini NASDAQ', 'market': 'Futures'},
-        {'symbol': 'GC', 'name': 'Gold', 'market': 'Futures'},
-        {'symbol': 'CL', 'name': 'Crude Oil', 'market': 'Futures'},
-    ],
-}
-
+        logger.error(f"search_symbols failed: {str(e)}")
+        logger.error(traceback.format_exc())
+        return jsonify({'code': 0, 'msg': str(e), 'data': []}), 500
 
 @market_bp.route('/symbols/hot', methods=['GET'])
 def get_hot_symbols():
-    """Return a small curated hot list per market (from DB or static fallback)."""
+    """Return a small curated hot list per market (local-only)."""
     try:
         market = (request.args.get('market') or '').strip()
-        limit = int(request.args.get('limit') or 20)
+        limit = int(request.args.get('limit') or 10)
         hot = seed_get_hot_symbols(market=market, limit=limit)
-        if not hot and market:
-            fallback = _HOT_SYMBOLS_FALLBACK.get(market, _HOT_SYMBOLS_FALLBACK.get('Crypto', []))
-            hot = fallback[:limit]
         return jsonify({'code': 1, 'msg': 'success', 'data': hot})
     except Exception as e:
-        logger.debug("get_hot_symbols from DB failed, using fallback: %s", e)
-        market = (request.args.get('market') or '').strip() or 'Crypto'
-        limit = int(request.args.get('limit') or 20)
-        fallback = _HOT_SYMBOLS_FALLBACK.get(market, _HOT_SYMBOLS_FALLBACK.get('Crypto', []))
-        return jsonify({'code': 1, 'msg': 'success', 'data': fallback[:limit]})
+        logger.error(f"get_hot_symbols failed: {str(e)}")
+        return jsonify({'code': 0, 'msg': str(e), 'data': []}), 500
 
 @market_bp.route('/watchlist/get', methods=['GET'])
 @login_required
@@ -245,7 +192,7 @@ def get_watchlist():
         with get_db_connection() as db:
             cur = db.cursor()
             cur.execute(
-                "SELECT id, market, symbol, name FROM qd_watchlist WHERE user_id = ? ORDER BY id DESC",
+                "SELECT id, market, symbol, name FROM ml_watchlist WHERE user_id = ? ORDER BY id DESC",
                 (user_id,)
             )
             rows = cur.fetchall() or []
@@ -265,7 +212,7 @@ def get_watchlist():
                     if resolved and resolved != current_name:
                         row['name'] = resolved
                         cur.execute(
-                            "UPDATE qd_watchlist SET name = ?, updated_at = NOW() WHERE user_id = ? AND market = ? AND symbol = ?",
+                            "UPDATE ml_watchlist SET name = ?, updated_at = NOW() WHERE user_id = ? AND market = ? AND symbol = ?",
                             (resolved, user_id, market, symbol)
                         )
                 except Exception:
@@ -300,7 +247,7 @@ def add_watchlist():
             # Insert or update (PostgreSQL UPSERT)
             cur.execute(
                 """
-                INSERT INTO qd_watchlist (user_id, market, symbol, name, created_at, updated_at) 
+                INSERT INTO ml_watchlist (user_id, market, symbol, name, created_at, updated_at) 
                 VALUES (?, ?, ?, ?, NOW(), NOW())
                 ON CONFLICT(user_id, market, symbol) DO UPDATE SET
                     name = excluded.name,
@@ -331,7 +278,7 @@ def remove_watchlist():
         with get_db_connection() as db:
             cur = db.cursor()
             cur.execute(
-                "DELETE FROM qd_watchlist WHERE user_id = ? AND symbol = ?",
+                "DELETE FROM ml_watchlist WHERE user_id = ? AND symbol = ?",
                 (user_id, symbol)
             )
             db.commit()
@@ -344,9 +291,8 @@ def remove_watchlist():
 
 
 def get_single_price(market: str, symbol: str) -> dict:
-    """Get price for a single symbol."""
+    """Get price for a single symbol (uses get_realtime_price with 30s cache)."""
     try:
-        # get_realtime_price has 30s cache; reflects 24h markets (e.g. Crypto) better than 1D K-line
         price_data = kline_service.get_realtime_price(market, symbol)
         
         return {
@@ -370,11 +316,7 @@ def get_single_price(market: str, symbol: str) -> dict:
 @market_bp.route('/watchlist/prices', methods=['GET'])
 def get_watchlist_prices():
     """
-    Batch fetch watchlist prices.
-
-    Params (Query String):
-        watchlist: JSON string of list of {market, symbol} objects
-        e.g. ?watchlist=[{"market":"USStock","symbol":"AAPL"}]
+    Batch get watchlist prices. Query: watchlist (JSON list of {market, symbol}).
     """
     try:
         watchlist_str = request.args.get('watchlist', '[]')
@@ -390,9 +332,10 @@ def get_watchlist_prices():
                 'data': []
             }), 400
         
+        # logger.info(f"Fetching prices for {len(watchlist)} watchlist items")
+        
         results = []
-
-        # Parallel fetch via thread pool
+        
         futures = {}
         for item in watchlist:
             market = item.get('market', '')
@@ -402,7 +345,6 @@ def get_watchlist_prices():
                 future = executor.submit(get_single_price, market, symbol)
                 futures[future] = (market, symbol)
         
-        # Collect results (with timeout)
         completed_futures = set()
         try:
             for future in as_completed(futures, timeout=30):
@@ -421,7 +363,6 @@ def get_watchlist_prices():
                         'changePercent': 0
                     })
         except TimeoutError:
-            # On timeout, add default result for incomplete tasks
             for future, (market, symbol) in futures.items():
                 if future not in completed_futures:
                     logger.warning(f"Price fetch timed out: {market}:{symbol}")
@@ -456,7 +397,7 @@ def get_watchlist_prices():
 @market_bp.route('/price', methods=['GET'])
 def get_price():
     """
-    Get single symbol price. Params: market, symbol (query).
+    Get single symbol price. Params: market, symbol.
     """
     try:
         market = request.args.get('market', '')
@@ -489,7 +430,7 @@ def get_price():
 @market_bp.route('/stock/name', methods=['POST'])
 def get_stock_name():
     """
-    Get display name for a symbol. Body: { market, symbol }. Response: { name }.
+    Get display name for a symbol. Body: { market, symbol }. Returns { name }.
     """
     try:
         data = request.get_json()
@@ -510,7 +451,6 @@ def get_stock_name():
                 'data': None
             }), 400
         
-        # Try cache (1 day TTL)
         cache_key = f"stock_name:{market}:{symbol}"
         cached_name = cache.get(cache_key)
         
@@ -522,7 +462,6 @@ def get_stock_name():
                 'data': {'name': cached_name}
             })
         
-        # Resolve display name by market
         stock_name = symbol
 
         try:
@@ -564,12 +503,11 @@ def get_stock_name():
                     'ETHUSDT': 'ETH Perpetual',
                 }
                 stock_name = futures_names.get(symbol, symbol)
-            
+
         except Exception as e:
             logger.warning(f"Failed to fetch stock name; falling back to symbol: {market}:{symbol} - {str(e)}")
             stock_name = symbol
-        
-        # Cache 1 day
+
         cache.set(cache_key, stock_name, 86400)
         
         return jsonify({

@@ -1,4 +1,0 @@
-# USDT TRC20 / HD wallet support. Requires Python 3.10, 3.11, 3.12, or 3.13.
-# Install after main deps: pip install -r requirements.txt -r requirements-usdt.txt
-# Python 3.14 is not supported (coincurve has no wheel and fails to build from source).
-bip-utils>=2.9.0

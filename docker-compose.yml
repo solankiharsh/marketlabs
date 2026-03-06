@@ -1,4 +1,4 @@
-# Zing Docker Compose - Backend + PostgreSQL
+# MarketLabs Docker Compose - Backend + PostgreSQL
 # Usage:
 #   1. Copy server/env.example to server/.env and edit
 #   2. docker-compose up -d
@@ -12,12 +12,12 @@ services:
   # ========================
   postgres:
     image: postgres:16-alpine
-    container_name: zing-db
+    container_name: marketlabs-db
     restart: unless-stopped
     environment:
-      POSTGRES_DB: ${POSTGRES_DB:-zing}
-      POSTGRES_USER: ${POSTGRES_USER:-zing}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-zing123}
+      POSTGRES_DB: ${POSTGRES_DB:-marketlabs}
+      POSTGRES_USER: ${POSTGRES_USER:-marketlabs}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-marketlabs123}
       TZ: ${TZ:-Asia/Shanghai}
     volumes:
       - postgres_data:/var/lib/postgresql/data
@@ -25,9 +25,9 @@ services:
     ports:
       - "${DB_PORT:-127.0.0.1:5432}:5432"
     networks:
-      - zing-network
+      - marketlabs-network
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-zing} -d ${POSTGRES_DB:-zing}"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-marketlabs} -d ${POSTGRES_DB:-marketlabs}"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -39,7 +39,7 @@ services:
     build:
       context: ./server
       dockerfile: Dockerfile
-    container_name: zing-backend
+    container_name: marketlabs-backend
     restart: unless-stopped
     depends_on:
       postgres:
@@ -55,10 +55,10 @@ services:
       - PYTHON_API_HOST=0.0.0.0
       - PYTHON_API_PORT=5000
       - TZ=${TZ:-Asia/Shanghai}
-      - DATABASE_URL=postgresql://${POSTGRES_USER:-zing}:${POSTGRES_PASSWORD:-zing123}@postgres:5432/${POSTGRES_DB:-zing}
+      - DATABASE_URL=postgresql://${POSTGRES_USER:-marketlabs}:${POSTGRES_PASSWORD:-marketlabs123}@postgres:5432/${POSTGRES_DB:-marketlabs}
       - DB_TYPE=postgresql
     networks:
-      - zing-network
+      - marketlabs-network
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:5000/api/health"]
       interval: 30s
@@ -74,5 +74,5 @@ volumes:
     driver: local
 
 networks:
-  zing-network:
+  marketlabs-network:
     driver: bridge
