@@ -7,7 +7,8 @@ WORKDIR /app
 # Copy package files
 COPY package*.json ./
 
-# Install dependencies (prefer npm)
+# Install all dependencies including devDependencies (needed for build)
+ENV NODE_ENV=development
 RUN npm install --legacy-peer-deps
 
 # Copy source code
