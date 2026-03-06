@@ -172,7 +172,7 @@ def save_indicator():
         id: number (0 for create),
         name: string,
         code: string,
-        description%s: string,
+        description: string,
         ...
       }
     """
