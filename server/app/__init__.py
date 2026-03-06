@@ -128,6 +128,34 @@ def restore_running_strategies():
         # Do not raise; avoid breaking app startup.
 
 
+def _run_migrations():
+    """Run init.sql on startup (all statements are IF NOT EXISTS — safe to repeat)."""
+    import os
+    try:
+        from app.utils.db import get_db_type
+        if get_db_type() != 'postgresql':
+            return
+        sql_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'migrations', 'init.sql')
+        if not os.path.isfile(sql_path):
+            return
+        with open(sql_path, 'r') as f:
+            sql = f.read()
+        from app.utils.db_postgres import _get_connection_pool
+        pool = _get_connection_pool()
+        conn = pool.getconn()
+        try:
+            conn.autocommit = True
+            cur = conn.cursor()
+            cur.execute(sql)
+            cur.close()
+            logger.info("Database schema migration completed (init.sql)")
+        finally:
+            conn.autocommit = False
+            pool.putconn(conn)
+    except Exception as e:
+        logger.warning(f"Migration note (non-fatal): {e}")
+
+
 def create_app(config_name='default'):
     """
     Flask application factory.
@@ -160,11 +188,14 @@ def create_app(config_name='default'):
     except Exception as e:
         logger.debug("Postgres connectivity check skipped: %s", e)
 
+    # Run schema migrations (CREATE TABLE IF NOT EXISTS — safe to run every startup)
+    _run_migrations()
+
     # Initialize database and ensure admin user exists
     try:
         from app.utils.db import init_database, get_db_type
         init_database()
-        
+
         # Ensure admin user exists (multi-user mode)
         from app.services.user_service import get_user_service
         get_user_service().ensure_admin_exists()

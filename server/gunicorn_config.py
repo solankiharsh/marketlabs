@@ -2,42 +2,29 @@
 Gunicorn config (production).
 Railway injects PORT; bind to it so healthchecks and proxy reach the app.
 """
-import multiprocessing
 import os
 
-# Server socket: use PORT from env (Railway) so healthcheck succeeds
+# Server socket
 _port = os.environ.get("PORT", "5000")
 bind = f"0.0.0.0:{_port}"
 backlog = 2048
 
-# Workers: cap on Railway to avoid too many Postgres connections (NO_SOCKET / TCP_ABORT)
-_workers = multiprocessing.cpu_count() * 2 + 1
-if os.environ.get("PORT"):
-    _workers = min(_workers, 4)
-workers = _workers
+# Workers: use WEB_CONCURRENCY if set (Railway), otherwise 2.
+# Keep low to avoid multiplied background threads and DB connections.
+workers = int(os.environ.get("WEB_CONCURRENCY", 2))
 worker_class = "sync"
-worker_connections = 1000
 timeout = 120
 keepalive = 5
 
-# Logging
-accesslog = "logs/access.log"
-errorlog = "logs/error.log"
+# Logging: stdout/stderr (Railway captures these automatically)
+accesslog = "-"
+errorlog = "-"
 loglevel = "info"
-access_log_format = '%(h)s %(l)s %(u)s %(t)s "%(r)s" %(s)s %(b)s "%(f)s" "%(a)s" %(D)s'
+access_log_format = '%(h)s %(l)s %(u)s %(t)s "%(r)s" %(s)s %(b)s %(D)s'
 
-# Process name
+# Process
 proc_name = "marketlabs_python_api"
-
-# Server
 daemon = False
-pidfile = "logs/gunicorn.pid"
-umask = 0
-user = None
-group = None
-tmp_upload_dir = None
 
-# SSL (optional)
-# keyfile = None
-# certfile = None
-
+# Don't preload — background threads (portfolio monitor, order worker) must start
+# in the worker process, not the master. With WEB_CONCURRENCY=1 on Railway this is fine.

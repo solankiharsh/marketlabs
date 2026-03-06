@@ -29,8 +29,8 @@ RUN pip install --no-cache-dir --prefer-binary --timeout 120 -r requirements.txt
 # Copy application code
 COPY . .
 
-# Create log and data directories
-RUN mkdir -p logs data/memory
+# Create data directory
+RUN mkdir -p data/memory
 
 # Expose port (Railway sets PORT at runtime; app binds to 0.0.0.0:$PORT)
 EXPOSE 5000

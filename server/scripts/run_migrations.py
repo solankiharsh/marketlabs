@@ -24,10 +24,22 @@ try:
 except Exception:
     pass
 
+
+def _is_railway_public_url(url: str) -> bool:
+    """True if this is Railway's public Postgres URL (requires SSL)."""
+    if "railway.internal" in url:
+        return False
+    return "rlwy.net" in url or ".railway" in url.lower()
+
+
 def main():
-    url = os.environ.get("DATABASE_URL", "").strip()
-    if not url or "postgresql" not in url and "postgres" not in url:
-        print("DATABASE_URL not set or not PostgreSQL. Skipping migrations.")
+    # Prefer public URL when running from your machine; private URL (postgres.railway.internal) only works inside Railway
+    url = (
+        os.environ.get("DATABASE_PUBLIC_URL", "").strip()
+        or os.environ.get("DATABASE_URL", "").strip()
+    )
+    if not url or ("postgresql" not in url and "postgres" not in url):
+        print("DATABASE_URL (or DATABASE_PUBLIC_URL) not set or not PostgreSQL. Skipping migrations.")
         return 0
 
     try:
@@ -45,7 +57,27 @@ def main():
     with open(init_sql, "r", encoding="utf-8", errors="replace") as f:
         content = f.read()
 
-    conn = psycopg2.connect(url)
+    # Railway public Postgres requires SSL; pass as kwarg so libpq uses TLS (URL append can break if password has ? or &)
+    connect_kwargs = {}
+    if _is_railway_public_url(url):
+        connect_kwargs["sslmode"] = "require"
+    try:
+        conn = psycopg2.connect(url, **connect_kwargs)
+    except Exception as e:
+        err_str = str(e).lower()
+        if "railway.internal" in str(url) or "could not translate host" in err_str:
+            print(
+                "Cannot reach postgres.railway.internal from your machine (it only resolves inside Railway).\n"
+                "Option A: In Railway dashboard → Postgres → Connect, copy the PUBLIC URL and set DATABASE_PUBLIC_URL in server/.env, then run this script again.\n"
+                "Option B: Run migrations on Railway (e.g. add a one-off deploy that runs this script, or use Railway's shell and run it there)."
+            )
+        elif _is_railway_public_url(str(url)) and ("server closed" in err_str or "unexpectedly" in err_str):
+            print(
+                "Connection to Railway public Postgres was rejected. Run migrations from inside Railway instead:\n"
+                "  Railway dashboard → backend service → deploy a one-off that runs: python scripts/run_migrations.py\n"
+                "  (uses private DATABASE_URL so no public SSL is needed)."
+            )
+        raise
     conn.autocommit = True
     try:
         with conn.cursor() as cur:

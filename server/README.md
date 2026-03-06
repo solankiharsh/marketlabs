@@ -210,11 +210,12 @@ The config binds to `PORT` when set (e.g. Railway) and caps workers to reduce Po
 ## Railway: Healthcheck and Postgres
 
 - **Healthcheck**: The app binds to `0.0.0.0:$PORT` when `PORT` is set, so Railway’s healthcheck can reach `/health` or `/api/health`.
-- **Postgres reset and fresh migrations**: After resetting Postgres in the Railway dashboard (or starting with a new DB), run the schema once:
-  ```bash
-  railway run python scripts/run_migrations.py
-  ```
-  Or from repo root: `cd server && python scripts/run_migrations.py` (with `DATABASE_URL` in `.env`). This applies `migrations/init.sql`. The app then creates the admin user on first request via `ensure_admin_exists()`.
+- **Postgres reset and fresh migrations**: After resetting Postgres, run the schema once.
+  - **From your machine** (against Railway Postgres): Railway’s `DATABASE_URL` uses `postgres.railway.internal`, which only resolves on Railway. Use the **public** URL: in Railway dashboard → Postgres → **Connect** (or Variables), copy the **Public** connection URL, set `DATABASE_PUBLIC_URL` in `server/.env` to that value, then run:
+    ```bash
+    cd server && python scripts/run_migrations.py
+    ```
+  - **From Railway** (e.g. one-off run in Railway shell): From **server/** directory, `railway run python scripts/run_migrations.py` will use the private URL. This applies `migrations/init.sql`. The app then creates the admin user on first request via `ensure_admin_exists()`.
 
 ## Troubleshooting
 
