@@ -478,6 +478,22 @@ class SignalNotifier:
                 )
                 db.commit()
                 cur.close()
+
+            # Push via WebSocket in real-time
+            try:
+                from app import socketio
+                room = f"user_{user_id}"
+                socketio.emit('strategy_signal', {
+                    'strategy_id': strategy_id,
+                    'symbol': symbol,
+                    'signal_type': signal_type,
+                    'title': title,
+                    'message': message,
+                    'timestamp': now,
+                }, room=room)
+            except Exception:
+                pass  # SocketIO may not be initialized yet
+
             return True, ""
         except Exception as e:
             logger.warning(f"browser notify persist failed: {e}")

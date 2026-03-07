@@ -83,7 +83,7 @@ def get_public_config():
 @market_bp.route('/types', methods=['GET'])
 def get_market_types():
     """Return supported market types for the add-watchlist modal."""
-    desired_order = ['USStock', 'Crypto', 'Forex', 'Futures']
+    desired_order = ['USStock', 'Crypto', 'Forex', 'IndianStock', 'Futures']
     order_rank = {v: i for i, v in enumerate(desired_order)}
 
     def _normalize_item(x):

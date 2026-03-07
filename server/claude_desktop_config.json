@@ -1,0 +1,14 @@
+{
+  "mcpServers": {
+    "marketlabs": {
+      "command": "python",
+      "args": ["mcp_server.py"],
+      "cwd": "/Users/harshsolanki/Developer/marketlabs/server",
+      "env": {
+        "MARKETLABS_API_URL": "http://localhost:5000",
+        "MARKETLABS_USERNAME": "marketlabs",
+        "MARKETLABS_PASSWORD": "marketlabs123"
+      }
+    }
+  }
+}

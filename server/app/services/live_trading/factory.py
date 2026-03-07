@@ -5,6 +5,7 @@ Supports:
 - Crypto exchanges: Binance, OKX, Bitget, Bybit, Coinbase, Kraken, KuCoin, Gate, Bitfinex
 - Traditional brokers: Interactive Brokers (IBKR) for US stocks
 - Forex brokers: MetaTrader 5 (MT5)
+- Indian brokers: Zerodha (Kite Connect), Angel One (SmartAPI)
 """
 
 from __future__ import annotations
@@ -33,6 +34,10 @@ IBKRConfig = None
 # Lazy import MT5 to avoid ImportError if MetaTrader5 not installed
 MT5Client = None
 MT5Config = None
+
+# Lazy import Indian broker clients
+ZerodhaClient = None
+AngelOneClient = None
 
 
 def _get(cfg: Dict[str, Any], *keys: str) -> str:
@@ -143,6 +148,12 @@ def create_client(exchange_config: Dict[str, Any], *, market_type: str = "swap")
         # This factory only creates clients based on exchange_id
         return create_mt5_client(exchange_config)
 
+    # Indian brokers (Zerodha, Angel One)
+    if exchange_id == "zerodha":
+        return create_zerodha_client(exchange_config)
+    if exchange_id == "angelone":
+        return create_angelone_client(exchange_config)
+
     raise LiveTradingError(f"Unsupported exchange_id: {exchange_id}")
 
 
@@ -238,6 +249,72 @@ def create_mt5_client(exchange_config: Dict[str, Any]):
             "2. Credentials are correct\n"
             "3. You are on Windows"
         )
+
+    return client
+
+
+def create_zerodha_client(exchange_config: Dict[str, Any]):
+    """
+    Create Zerodha (Kite Connect) client for Indian stock trading.
+
+    exchange_config should contain:
+    - api_key: Kite Connect API key
+    - access_token: Access token (generated daily via Kite login)
+    """
+    global ZerodhaClient
+
+    if ZerodhaClient is None:
+        try:
+            from app.services.live_trading.zerodha import ZerodhaClient as _ZerodhaClient
+            ZerodhaClient = _ZerodhaClient
+        except ImportError:
+            raise LiveTradingError("Zerodha trading client import failed")
+
+    api_key = _get(exchange_config, "api_key", "apiKey")
+    access_token = _get(exchange_config, "access_token", "accessToken")
+
+    if not api_key or not access_token:
+        raise LiveTradingError("Zerodha requires api_key and access_token")
+
+    return ZerodhaClient(api_key=api_key, access_token=access_token)
+
+
+def create_angelone_client(exchange_config: Dict[str, Any]):
+    """
+    Create Angel One (SmartAPI) client for Indian stock trading.
+
+    exchange_config should contain:
+    - api_key: SmartAPI key
+    - client_id: Angel One client ID
+    - password: Trading password
+    - totp_key: TOTP secret for 2FA
+    """
+    global AngelOneClient
+
+    if AngelOneClient is None:
+        try:
+            from app.services.live_trading.angelone import AngelOneClient as _AngelOneClient
+            AngelOneClient = _AngelOneClient
+        except ImportError:
+            raise LiveTradingError("AngelOne trading client import failed")
+
+    api_key = _get(exchange_config, "api_key", "apiKey")
+    client_id = _get(exchange_config, "client_id", "clientId")
+    password = _get(exchange_config, "password")
+    totp_key = _get(exchange_config, "totp_key", "totpKey")
+
+    if not api_key or not client_id or not password:
+        raise LiveTradingError("AngelOne requires api_key, client_id, and password")
+
+    client = AngelOneClient(
+        api_key=api_key,
+        client_id=client_id,
+        password=password,
+        totp_key=totp_key,
+    )
+
+    # Login immediately (AngelOne requires JWT token)
+    client.login()
 
     return client
 

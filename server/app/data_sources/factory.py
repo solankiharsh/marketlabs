@@ -20,7 +20,7 @@ class DataSourceFactory:
         Get data source for the given market.
 
         Args:
-            market: Market type (Crypto, USStock, Forex, Futures)
+            market: Market type (Crypto, USStock, Forex, Futures, IndianStock)
 
         Returns:
             Data source instance.
@@ -60,6 +60,9 @@ class DataSourceFactory:
         elif market == 'Futures':
             from app.data_sources.futures import FuturesDataSource
             return FuturesDataSource()
+        elif market == 'IndianStock':
+            from app.data_sources.indian_stock import IndianStockDataSource
+            return IndianStockDataSource()
         else:
             raise ValueError(f"Unsupported market type: {market}")
     

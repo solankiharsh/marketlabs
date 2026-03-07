@@ -138,20 +138,66 @@ def login_required(f):
                 token = parts[1]
         
         if not token:
+            # Fallback: check X-Api-Key header for external access
+            api_key = request.headers.get('X-Api-Key')
+            if api_key:
+                api_user = _verify_api_key(api_key)
+                if api_user:
+                    g.user = api_user.get('username', 'api')
+                    g.user_id = api_user['user_id']
+                    g.user_role = api_user.get('role', 'user')
+                    g.auth_method = 'api_key'
+                    return f(*args, **kwargs)
             return jsonify({'code': 401, 'msg': 'Token missing', 'data': None}), 401
-        
+
         payload = verify_token(token)
         if not payload:
             return jsonify({'code': 401, 'msg': 'Token invalid or expired', 'data': None}), 401
-        
+
         # Store user info in flask.g
         g.user = payload.get('sub')
         g.user_id = payload.get('user_id')
         g.user_role = payload.get('role', 'user')
-        
+        g.auth_method = 'jwt'
+
         return f(*args, **kwargs)
-        
+
     return decorated
+
+
+def _verify_api_key(api_key: str) -> dict:
+    """Verify an API key and return user info if valid."""
+    import hashlib
+    try:
+        key_hash = hashlib.sha256(api_key.encode()).hexdigest()
+        from app.utils.db import get_db_connection
+        with get_db_connection() as db:
+            cur = db.cursor()
+            cur.execute(
+                "SELECT k.user_id, k.permissions, u.username, u.role "
+                "FROM ml_api_keys k JOIN ml_users u ON k.user_id = u.id "
+                "WHERE k.key_hash = %s AND k.is_active = TRUE",
+                (key_hash,)
+            )
+            row = cur.fetchone()
+            if row:
+                # Update last_used_at
+                cur.execute(
+                    "UPDATE ml_api_keys SET last_used_at = NOW() WHERE key_hash = %s",
+                    (key_hash,)
+                )
+                db.commit()
+                cur.close()
+                return {
+                    'user_id': row['user_id'],
+                    'username': row['username'],
+                    'role': row['role'],
+                    'permissions': row.get('permissions', 'read'),
+                }
+            cur.close()
+    except Exception as e:
+        logger.debug(f"API key verification error: {e}")
+    return None
 
 
 def admin_required(f):

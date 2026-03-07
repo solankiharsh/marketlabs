@@ -261,6 +261,7 @@ def _fetch_stock_indices() -> List[Dict[str, Any]]:
         # Australia
         {"symbol": "^AXJO", "name_en": "ASX 200", "region": "AU", "flag": "🇦🇺", "lat": -33.8688, "lng": 151.2093},
         # India
+        {"symbol": "^NSEI", "name_en": "Nifty 50", "region": "IN", "flag": "🇮🇳", "lat": 28.6139, "lng": 77.2090},
         {"symbol": "^BSESN", "name_en": "SENSEX", "region": "IN", "flag": "🇮🇳", "lat": 19.0760, "lng": 72.8777},
     ]
     
@@ -1232,7 +1233,8 @@ def _generate_heatmap_data() -> Dict[str, Any]:
         "sectors": [],
         "forex": [],
         "commodities": [],  # Commodities heatmap
-        "indices": []
+        "indices": [],
+        "india": []  # Indian market heatmap
     }
     
     # Commodities heatmap (gold, silver, oil, etc.)
@@ -1315,7 +1317,59 @@ def _generate_heatmap_data() -> Dict[str, Any]:
         logger.debug(f"Failed to fetch sector ETFs: {e}")
     
     heatmap["sectors"] = sectors
-    
+
+    # India heatmap — popular NSE stocks
+    india_stocks = [
+        {"symbol": "RELIANCE.NS", "name": "Reliance", "name_en": "Reliance"},
+        {"symbol": "TCS.NS", "name": "TCS", "name_en": "TCS"},
+        {"symbol": "INFY.NS", "name": "Infosys", "name_en": "Infosys"},
+        {"symbol": "HDFCBANK.NS", "name": "HDFC Bank", "name_en": "HDFC Bank"},
+        {"symbol": "ICICIBANK.NS", "name": "ICICI Bank", "name_en": "ICICI Bank"},
+        {"symbol": "HINDUNILVR.NS", "name": "HUL", "name_en": "HUL"},
+        {"symbol": "ITC.NS", "name": "ITC", "name_en": "ITC"},
+        {"symbol": "SBIN.NS", "name": "SBI", "name_en": "SBI"},
+        {"symbol": "BHARTIARTL.NS", "name": "Airtel", "name_en": "Airtel"},
+        {"symbol": "KOTAKBANK.NS", "name": "Kotak Bank", "name_en": "Kotak Bank"},
+        {"symbol": "^NSEI", "name": "NIFTY 50", "name_en": "NIFTY 50"},
+        {"symbol": "^BSESN", "name": "SENSEX", "name_en": "SENSEX"},
+    ]
+    india_heatmap = _get_cached("india_heatmap")
+    if not india_heatmap:
+        try:
+            import yfinance as yf
+            symbols = [s["symbol"] for s in india_stocks]
+            tickers = yf.Tickers(" ".join(symbols))
+            india_heatmap = []
+            for stock_info in india_stocks:
+                try:
+                    ticker = tickers.tickers.get(stock_info["symbol"])
+                    if ticker:
+                        hist = ticker.history(period="2d")
+                        if len(hist) >= 2:
+                            prev = hist["Close"].iloc[-2]
+                            curr = hist["Close"].iloc[-1]
+                            change = round(((curr - prev) / prev) * 100, 2)
+                        elif len(hist) == 1:
+                            curr = hist["Close"].iloc[-1]
+                            change = 0
+                        else:
+                            curr = 0
+                            change = 0
+                        india_heatmap.append({
+                            "name": stock_info["name"],
+                            "name_en": stock_info["name_en"],
+                            "symbol": stock_info["symbol"],
+                            "value": change,
+                            "price": round(float(curr), 2)
+                        })
+                except Exception:
+                    pass
+            _set_cached("india_heatmap", india_heatmap, 300)
+        except Exception as e:
+            logger.debug(f"Failed to fetch India heatmap data: {e}")
+            india_heatmap = []
+    heatmap["india"] = india_heatmap or []
+
     # Index heatmap by region
     indices_data = _get_cached("stock_indices")
     if indices_data:
@@ -1583,6 +1637,120 @@ def _fetch_stock_opportunity_prices() -> List[Dict[str, Any]]:
         logger.error(f"Failed to fetch stock opportunity prices: {e}")
         return []
 
+def _fetch_indian_stock_opportunity_prices() -> List[Dict[str, Any]]:
+    """Fetch popular Indian (NSE) stock prices for opportunity scanning. Falls back to BSE (.BO) if NSE (.NS) fails."""
+    stocks = [
+        {"symbol": "RELIANCE.NS", "symbol_bse": "RELIANCE.BO", "name": "Reliance Industries", "nse": "RELIANCE"},
+        {"symbol": "TCS.NS", "symbol_bse": "TCS.BO", "name": "TCS", "nse": "TCS"},
+        {"symbol": "INFY.NS", "symbol_bse": "INFY.BO", "name": "Infosys", "nse": "INFY"},
+        {"symbol": "HDFCBANK.NS", "symbol_bse": "HDFCBANK.BO", "name": "HDFC Bank", "nse": "HDFCBANK"},
+        {"symbol": "ICICIBANK.NS", "symbol_bse": "ICICIBANK.BO", "name": "ICICI Bank", "nse": "ICICIBANK"},
+        {"symbol": "HINDUNILVR.NS", "symbol_bse": "HINDUNILVR.BO", "name": "Hindustan Unilever", "nse": "HINDUNILVR"},
+        {"symbol": "ITC.NS", "symbol_bse": "ITC.BO", "name": "ITC", "nse": "ITC"},
+        {"symbol": "BHARTIARTL.NS", "symbol_bse": "BHARTIARTL.BO", "name": "Bharti Airtel", "nse": "BHARTIARTL"},
+        {"symbol": "SBIN.NS", "symbol_bse": "SBIN.BO", "name": "SBI", "nse": "SBIN"},
+        {"symbol": "KOTAKBANK.NS", "symbol_bse": "KOTAKBANK.BO", "name": "Kotak Bank", "nse": "KOTAKBANK"},
+        {"symbol": "LT.NS", "symbol_bse": "LT.BO", "name": "Larsen & Toubro", "nse": "LT"},
+        {"symbol": "AXISBANK.NS", "symbol_bse": "AXISBANK.BO", "name": "Axis Bank", "nse": "AXISBANK"},
+        {"symbol": "WIPRO.NS", "symbol_bse": "WIPRO.BO", "name": "Wipro", "nse": "WIPRO"},
+        {"symbol": "HCLTECH.NS", "symbol_bse": "HCLTECH.BO", "name": "HCL Tech", "nse": "HCLTECH"},
+        {"symbol": "TATAMOTORS.NS", "symbol_bse": "TATAMOTORS.BO", "name": "Tata Motors", "nse": "TATAMOTORS"},
+    ]
+
+    def _fetch_one(symbol: str):
+        try:
+            import yfinance as yf
+            t = yf.Ticker(symbol)
+            hist = t.history(period="2d")
+            if hist is None or len(hist) == 0:
+                return None
+            if len(hist) >= 2:
+                prev_close = float(hist["Close"].iloc[-2])
+                current = float(hist["Close"].iloc[-1])
+                change = ((current - prev_close) / prev_close) * 100
+            else:
+                current = float(hist["Close"].iloc[-1])
+                change = 0
+            return current, change
+        except Exception:
+            return None
+
+    try:
+        result = []
+        for stock in stocks:
+            data = _fetch_one(stock["symbol"])
+            if data is None and stock.get("symbol_bse"):
+                data = _fetch_one(stock["symbol_bse"])
+            if data is not None:
+                current, change = data
+                result.append({
+                    "symbol": stock["nse"],
+                    "name": stock["name"],
+                    "price": round(float(current), 2),
+                    "change": round(float(change), 2)
+                })
+        return result
+    except Exception as e:
+        logger.error(f"Failed to fetch Indian stock opportunity prices: {e}")
+        return []
+
+
+def _analyze_opportunities_indian_stocks(opportunities: list):
+    """Scan Indian stocks (NSE) for trading opportunities."""
+    stock_data = _get_cached("indian_stock_opportunity_prices")
+    if not stock_data:
+        stock_data = _fetch_indian_stock_opportunity_prices()
+        if stock_data:
+            _set_cached("indian_stock_opportunity_prices", stock_data, 3600)
+
+    for stock in (stock_data or []):
+        change = _safe_float(stock.get("change", 0))
+        symbol = stock.get("symbol", "")
+        name = stock.get("name", "")
+        price = _safe_float(stock.get("price", 0))
+
+        signal = None
+        strength = "medium"
+        reason = ""
+        impact = "neutral"
+
+        # Indian stocks: similar thresholds to US stocks
+        if change > 4:
+            signal = "overbought"
+            strength = "strong"
+            reason = f"Daily up {change:.1f}%, large short-term gain, watch for pullback"
+            impact = "bearish"
+        elif change > 1.5:
+            signal = "bullish_momentum"
+            strength = "strong" if change > 3 else "medium"
+            reason = f"Daily up {change:.1f}%, upward momentum"
+            impact = "bullish"
+        elif change < -4:
+            signal = "oversold"
+            strength = "strong"
+            reason = f"Daily down {abs(change):.1f}%, potential oversold bounce"
+            impact = "bullish"
+        elif change < -1.5:
+            signal = "bearish_momentum"
+            strength = "strong" if change < -3 else "medium"
+            reason = f"Daily down {abs(change):.1f}%, downtrend"
+            impact = "bearish"
+
+        if signal:
+            opportunities.append({
+                "symbol": symbol,
+                "name": name,
+                "price": price,
+                "change_24h": change,
+                "signal": signal,
+                "strength": strength,
+                "reason": reason,
+                "impact": impact,
+                "market": "IndianStock",
+                "timestamp": int(time.time())
+            })
+
+
 def _analyze_opportunities_crypto(opportunities: list):
     """Scan crypto market for trading opportunities."""
     crypto_data = _get_cached("crypto_prices")
@@ -1753,7 +1921,7 @@ def _analyze_opportunities_forex(opportunities: list):
 @login_required
 def trading_opportunities():
     """
-    Scan for trading opportunities across Crypto, US Stocks, and Forex.
+    Scan for trading opportunities across Crypto, US Stocks, Forex, and Indian Stocks.
     Cached for 1 hour. Pass ?force=true to skip cache.
     """
     try:
@@ -1774,6 +1942,9 @@ def trading_opportunities():
 
         # 3) Forex
         _analyze_opportunities_forex(opportunities)
+
+        # 4) Indian Stocks
+        _analyze_opportunities_indian_stocks(opportunities)
 
         # Sort by absolute change descending
         opportunities.sort(key=lambda x: abs(x.get("change_24h", 0)), reverse=True)

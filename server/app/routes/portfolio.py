@@ -2,7 +2,9 @@
 Portfolio API routes (local-only).
 Manages manual positions (user's existing holdings) and AI monitoring tasks.
 """
-from flask import Blueprint, request, jsonify, g
+from flask import Blueprint, request, jsonify, g, Response
+import csv
+import io
 import json
 import traceback
 import time
@@ -220,7 +222,10 @@ def add_position():
         notes = (data.get('notes') or '').strip()
         tags = data.get('tags') or []
         group_name = (data.get('group_name') or '').strip()
-        
+        stop_loss = data.get('stop_loss')
+        take_profit = data.get('take_profit')
+        trailing_stop_pct = data.get('trailing_stop_pct')
+
         if not market or not symbol:
             return jsonify({'code': 0, 'msg': 'Missing market or symbol', 'data': None}), 400
         
@@ -243,9 +248,10 @@ def add_position():
             cur = db.cursor()
             cur.execute(
                 """
-                INSERT INTO ml_manual_positions 
-                (user_id, market, symbol, name, side, quantity, entry_price, entry_time, notes, tags, group_name, created_at, updated_at)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, NOW(), NOW())
+                INSERT INTO ml_manual_positions
+                (user_id, market, symbol, name, side, quantity, entry_price, entry_time, notes, tags, group_name,
+                 stop_loss, take_profit, trailing_stop_pct, created_at, updated_at)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, NOW(), NOW())
                 ON CONFLICT(user_id, market, symbol, side, group_name) DO UPDATE SET
                     name = excluded.name,
                     quantity = excluded.quantity,
@@ -254,9 +260,15 @@ def add_position():
                     notes = excluded.notes,
                     tags = excluded.tags,
                     group_name = excluded.group_name,
+                    stop_loss = excluded.stop_loss,
+                    take_profit = excluded.take_profit,
+                    trailing_stop_pct = excluded.trailing_stop_pct,
                     updated_at = NOW()
                 """,
-                (user_id, market, symbol, name, side, quantity, entry_price, entry_time, notes, tags_json, group_name)
+                (user_id, market, symbol, name, side, quantity, entry_price, entry_time, notes, tags_json, group_name,
+                 float(stop_loss) if stop_loss else None,
+                 float(take_profit) if take_profit else None,
+                 float(trailing_stop_pct) if trailing_stop_pct else None)
             )
             position_id = cur.lastrowid
             db.commit()
@@ -314,7 +326,19 @@ def update_position(position_id):
         if 'group_name' in data:
             updates.append('group_name = %s')
             params.append((data.get('group_name') or '').strip())
-        
+
+        if 'stop_loss' in data:
+            updates.append('stop_loss = %s')
+            params.append(float(data['stop_loss']) if data['stop_loss'] else None)
+
+        if 'take_profit' in data:
+            updates.append('take_profit = %s')
+            params.append(float(data['take_profit']) if data['take_profit'] else None)
+
+        if 'trailing_stop_pct' in data:
+            updates.append('trailing_stop_pct = %s')
+            params.append(float(data['trailing_stop_pct']) if data['trailing_stop_pct'] else None)
+
         if not updates:
             return jsonify({'code': 0, 'msg': 'No fields to update', 'data': None}), 400
         
@@ -1047,3 +1071,63 @@ def rename_group():
         logger.error(f"rename_group failed: {str(e)}")
         logger.error(traceback.format_exc())
         return jsonify({'code': 0, 'msg': str(e), 'data': None}), 500
+
+
+@portfolio_bp.route('/positions/export', methods=['GET'])
+@login_required
+def export_positions():
+    """
+    Export portfolio positions as CSV or JSON.
+
+    Query params:
+        format: 'csv' or 'json' (default: csv)
+    """
+    try:
+        user_id = g.user_id
+        fmt = (request.args.get('format') or 'csv').strip().lower()
+
+        with get_db_connection() as db:
+            cur = db.cursor()
+            cur.execute(
+                "SELECT id, market, symbol, name, side, quantity, entry_price, entry_time, "
+                "stop_loss, take_profit, trailing_stop_pct, notes, group_name, created_at "
+                "FROM ml_manual_positions WHERE user_id = %s ORDER BY created_at DESC",
+                (user_id,)
+            )
+            rows = cur.fetchall() or []
+            cur.close()
+
+        positions = []
+        for row in rows:
+            pos = dict(row)
+            if pos.get('created_at') and hasattr(pos['created_at'], 'isoformat'):
+                pos['created_at'] = pos['created_at'].isoformat()
+            for k in ('quantity', 'entry_price', 'stop_loss', 'take_profit', 'trailing_stop_pct'):
+                if pos.get(k) is not None:
+                    pos[k] = float(pos[k])
+            positions.append(pos)
+
+        if fmt == 'json':
+            return jsonify({'code': 1, 'msg': 'success', 'data': positions})
+
+        if not positions:
+            return Response("No positions found\n", mimetype='text/csv',
+                          headers={'Content-Disposition': 'attachment; filename=positions.csv'})
+
+        output = io.StringIO()
+        fieldnames = ['id', 'market', 'symbol', 'name', 'side', 'quantity', 'entry_price',
+                     'entry_time', 'stop_loss', 'take_profit', 'trailing_stop_pct',
+                     'notes', 'group_name', 'created_at']
+        writer = csv.DictWriter(output, fieldnames=fieldnames, extrasaction='ignore')
+        writer.writeheader()
+        for pos in positions:
+            writer.writerow(pos)
+
+        return Response(
+            output.getvalue(),
+            mimetype='text/csv',
+            headers={'Content-Disposition': 'attachment; filename=positions.csv'}
+        )
+    except Exception as e:
+        logger.error(f"export_positions failed: {str(e)}")
+        return jsonify({'code': 0, 'msg': str(e)}), 500

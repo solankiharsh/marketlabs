@@ -612,7 +612,18 @@ INSERT INTO ml_market_symbols (market, symbol, name, exchange, currency, is_acti
 ('Futures', 'ZS', 'Soybeans', 'CBOT', 'USD', 1, 1, 94),
 ('Futures', 'ZW', 'Wheat', 'CBOT', 'USD', 1, 1, 93),
 ('Futures', 'ES', 'S&P 500 E-mini', 'CME', 'USD', 1, 1, 92),
-('Futures', 'NQ', 'NASDAQ 100 E-mini', 'CME', 'USD', 1, 1, 91)
+('Futures', 'NQ', 'NASDAQ 100 E-mini', 'CME', 'USD', 1, 1, 91),
+-- IndianStock (NSE)
+('IndianStock', 'RELIANCE.NS', 'Reliance Industries Ltd.', 'NSE', 'INR', 1, 1, 100),
+('IndianStock', 'TCS.NS', 'Tata Consultancy Services Ltd.', 'NSE', 'INR', 1, 1, 99),
+('IndianStock', 'INFY.NS', 'Infosys Ltd.', 'NSE', 'INR', 1, 1, 98),
+('IndianStock', 'HDFCBANK.NS', 'HDFC Bank Ltd.', 'NSE', 'INR', 1, 1, 97),
+('IndianStock', 'ICICIBANK.NS', 'ICICI Bank Ltd.', 'NSE', 'INR', 1, 1, 96),
+('IndianStock', 'HINDUNILVR.NS', 'Hindustan Unilever Ltd.', 'NSE', 'INR', 1, 1, 95),
+('IndianStock', 'ITC.NS', 'ITC Ltd.', 'NSE', 'INR', 1, 1, 94),
+('IndianStock', 'SBIN.NS', 'State Bank of India', 'NSE', 'INR', 1, 1, 93),
+('IndianStock', 'BHARTIARTL.NS', 'Bharti Airtel Ltd.', 'NSE', 'INR', 1, 1, 92),
+('IndianStock', 'KOTAKBANK.NS', 'Kotak Mahindra Bank Ltd.', 'NSE', 'INR', 1, 1, 91)
 ON CONFLICT (market, symbol) DO NOTHING;
 
 -- =============================================================================
@@ -802,6 +813,195 @@ BEGIN
         RAISE NOTICE 'Added view_count column to ml_indicator_codes';
     END IF;
 END $$;
+
+-- =============================================================================
+-- Price Alerts (Telegram bot + WebSocket streamer)
+-- =============================================================================
+
+CREATE TABLE IF NOT EXISTS ml_price_alerts (
+    id SERIAL PRIMARY KEY,
+    user_id INTEGER NOT NULL,
+    telegram_chat_id VARCHAR(100),
+    market VARCHAR(50) NOT NULL,
+    symbol VARCHAR(50) NOT NULL,
+    target_price REAL NOT NULL,
+    direction VARCHAR(10) NOT NULL DEFAULT 'above',  -- 'above' or 'below'
+    is_triggered BOOLEAN DEFAULT FALSE,
+    created_at TIMESTAMP DEFAULT NOW(),
+    triggered_at TIMESTAMP
+);
+
+-- =============================================================================
+-- API Keys (external access for TradingView webhooks, scripts, etc.)
+-- =============================================================================
+
+CREATE TABLE IF NOT EXISTS ml_api_keys (
+    id SERIAL PRIMARY KEY,
+    user_id INTEGER NOT NULL REFERENCES ml_users(id) ON DELETE CASCADE,
+    key_hash VARCHAR(255) NOT NULL,       -- SHA-256 hash of the API key
+    key_prefix VARCHAR(10) NOT NULL,      -- First 8 chars for display (e.g. "ml_a1b2...")
+    label VARCHAR(100) DEFAULT '',        -- User-friendly label
+    permissions TEXT DEFAULT 'read,trade', -- Comma-separated: read, trade, admin
+    is_active BOOLEAN DEFAULT TRUE,
+    last_used_at TIMESTAMP,
+    created_at TIMESTAMP DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_api_keys_user_id ON ml_api_keys(user_id);
+CREATE INDEX IF NOT EXISTS idx_api_keys_key_hash ON ml_api_keys(key_hash);
+
+-- =============================================================================
+-- Webhook Logs (TradingView alert history)
+-- =============================================================================
+
+CREATE TABLE IF NOT EXISTS ml_webhook_logs (
+    id SERIAL PRIMARY KEY,
+    user_id INTEGER NOT NULL,
+    source VARCHAR(50) DEFAULT 'tradingview',
+    payload TEXT,
+    action VARCHAR(50),        -- 'buy', 'sell', 'alert', etc.
+    market VARCHAR(50),
+    symbol VARCHAR(50),
+    status VARCHAR(20) DEFAULT 'received',  -- received, processed, error
+    error_message TEXT,
+    created_at TIMESTAMP DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_webhook_logs_user_id ON ml_webhook_logs(user_id);
+
+-- =============================================================================
+-- Add SL/TP/Trailing Stop columns to manual positions (safe — IF NOT EXISTS)
+-- =============================================================================
+
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_name = 'ml_manual_positions' AND column_name = 'stop_loss'
+    ) THEN
+        ALTER TABLE ml_manual_positions ADD COLUMN stop_loss DECIMAL(20,8);
+    END IF;
+
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_name = 'ml_manual_positions' AND column_name = 'take_profit'
+    ) THEN
+        ALTER TABLE ml_manual_positions ADD COLUMN take_profit DECIMAL(20,8);
+    END IF;
+
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_name = 'ml_manual_positions' AND column_name = 'trailing_stop_pct'
+    ) THEN
+        ALTER TABLE ml_manual_positions ADD COLUMN trailing_stop_pct DECIMAL(10,4);
+    END IF;
+
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_name = 'ml_manual_positions' AND column_name = 'trailing_stop_highest'
+    ) THEN
+        ALTER TABLE ml_manual_positions ADD COLUMN trailing_stop_highest DECIMAL(20,8);
+    END IF;
+END $$;
+
+-- =============================================================================
+-- 22. Flow Workflows (Visual Strategy Builder)
+-- =============================================================================
+
+CREATE TABLE IF NOT EXISTS ml_flow_workflows (
+    id SERIAL PRIMARY KEY,
+    user_id INTEGER NOT NULL REFERENCES ml_users(id) ON DELETE CASCADE,
+    name VARCHAR(255) NOT NULL DEFAULT 'Untitled Workflow',
+    description TEXT DEFAULT '',
+    nodes JSONB DEFAULT '[]',
+    edges JSONB DEFAULT '[]',
+    is_active BOOLEAN DEFAULT FALSE,
+    webhook_token VARCHAR(64),
+    webhook_secret VARCHAR(64),
+    webhook_enabled BOOLEAN DEFAULT FALSE,
+    webhook_auth_type VARCHAR(10) DEFAULT 'payload',
+    created_at TIMESTAMP DEFAULT NOW(),
+    updated_at TIMESTAMP DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_flow_workflows_user_id ON ml_flow_workflows(user_id);
+CREATE INDEX IF NOT EXISTS idx_flow_workflows_webhook_token ON ml_flow_workflows(webhook_token);
+
+-- =============================================================================
+-- 23. Flow Workflow Executions
+-- =============================================================================
+
+CREATE TABLE IF NOT EXISTS ml_flow_executions (
+    id SERIAL PRIMARY KEY,
+    workflow_id INTEGER NOT NULL REFERENCES ml_flow_workflows(id) ON DELETE CASCADE,
+    status VARCHAR(20) DEFAULT 'pending',
+    started_at TIMESTAMP,
+    completed_at TIMESTAMP,
+    logs JSONB DEFAULT '[]',
+    error TEXT,
+    created_at TIMESTAMP DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_flow_executions_workflow_id ON ml_flow_executions(workflow_id);
+CREATE INDEX IF NOT EXISTS idx_flow_executions_status ON ml_flow_executions(status);
+
+-- =============================================================================
+-- 24. Scanner Strategies (Generic Webhook Scanner)
+-- =============================================================================
+
+CREATE TABLE IF NOT EXISTS ml_scanner_strategies (
+    id SERIAL PRIMARY KEY,
+    user_id INTEGER NOT NULL REFERENCES ml_users(id) ON DELETE CASCADE,
+    name VARCHAR(255) NOT NULL,
+    webhook_id VARCHAR(64) UNIQUE NOT NULL,
+    is_active BOOLEAN DEFAULT TRUE,
+    market_type VARCHAR(50) NOT NULL DEFAULT 'USStock',
+    strategy_type VARCHAR(20) NOT NULL DEFAULT 'intraday',
+    start_time VARCHAR(5),
+    end_time VARCHAR(5),
+    squareoff_time VARCHAR(5),
+    default_action VARCHAR(10) DEFAULT 'BUY',
+    default_order_type VARCHAR(20) DEFAULT 'market',
+    created_at TIMESTAMP DEFAULT NOW(),
+    updated_at TIMESTAMP DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_scanner_strategies_user_id ON ml_scanner_strategies(user_id);
+CREATE INDEX IF NOT EXISTS idx_scanner_strategies_webhook_id ON ml_scanner_strategies(webhook_id);
+
+-- =============================================================================
+-- 25. Scanner Symbol Mappings
+-- =============================================================================
+
+CREATE TABLE IF NOT EXISTS ml_scanner_symbol_mappings (
+    id SERIAL PRIMARY KEY,
+    strategy_id INTEGER NOT NULL REFERENCES ml_scanner_strategies(id) ON DELETE CASCADE,
+    source_symbol VARCHAR(100) NOT NULL,
+    market VARCHAR(50) NOT NULL,
+    symbol VARCHAR(100) NOT NULL,
+    quantity REAL NOT NULL DEFAULT 1,
+    execution_mode VARCHAR(20) DEFAULT 'signal',
+    created_at TIMESTAMP DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_scanner_symbol_mappings_strategy_id ON ml_scanner_symbol_mappings(strategy_id);
+
+-- =============================================================================
+-- 26. Scanner Webhook Logs
+-- =============================================================================
+
+CREATE TABLE IF NOT EXISTS ml_scanner_webhook_logs (
+    id SERIAL PRIMARY KEY,
+    strategy_id INTEGER NOT NULL,
+    payload JSONB,
+    symbols_processed TEXT,
+    orders_queued INTEGER DEFAULT 0,
+    status VARCHAR(20),
+    error TEXT,
+    created_at TIMESTAMP DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_scanner_webhook_logs_strategy_id ON ml_scanner_webhook_logs(strategy_id);
 
 -- =============================================================================
 -- Completion Notice
