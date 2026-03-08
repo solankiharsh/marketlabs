@@ -7,6 +7,7 @@ from typing import Dict, List, Any, Optional
 from datetime import datetime, timedelta
 
 from app.utils.logger import get_logger
+from app.utils.market_hours import is_market_open
 
 logger = get_logger(__name__)
 
@@ -134,21 +135,21 @@ class BaseDataSource(ABC):
         self,
         symbol: str,
         klines: List[Dict[str, Any]],
-        timeframe: str
+        timeframe: str,
+        market: Optional[str] = None
     ):
-        """Log the result of getting data"""
+        """Log the result of getting data, market-hours aware."""
         if klines:
             latest_time = datetime.fromtimestamp(klines[-1]['time'])
             time_diff = (datetime.now() - latest_time).total_seconds()
-            # logger.info(
-            #     f"{self.name}: {symbol} get {len(klines)} data, "
-            #     f"latest time: {latest_time}, delay: {time_diff:.0f} seconds"
-            # )
-            
+
             # Check if the data is too old
             max_diff = TIMEFRAME_SECONDS.get(timeframe, 3600) * 2
             if time_diff > max_diff:
-                logger.warning(f"Warning: {symbol} data is delayed ({time_diff:.0f} seconds)")
+                if market and not is_market_open(market):
+                    logger.debug(f"{symbol}: data is {time_diff:.0f}s old (market closed, expected)")
+                else:
+                    logger.warning(f"Warning: {symbol} data is delayed ({time_diff:.0f} seconds)")
         else:
             logger.warning(f"{self.name}: no data for {symbol}")
 

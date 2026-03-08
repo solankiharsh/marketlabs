@@ -4,6 +4,9 @@ Railway injects PORT; bind to it so healthchecks and proxy reach the app.
 """
 import os
 
+# Signal to the app that it's running under gunicorn (used by SocketIO async_mode detection)
+os.environ["GUNICORN_WORKER"] = "1"
+
 # Server socket
 _port = os.environ.get("PORT", "5000")
 bind = f"0.0.0.0:{_port}"
@@ -12,7 +15,7 @@ backlog = 2048
 # Workers: use WEB_CONCURRENCY if set (Railway), otherwise 2.
 # Keep low to avoid multiplied background threads and DB connections.
 workers = int(os.environ.get("WEB_CONCURRENCY", 2))
-worker_class = "sync"
+worker_class = "eventlet"
 timeout = 120
 keepalive = 5
 

@@ -3,10 +3,14 @@ MarketLabs Python API - Flask application factory.
 """
 from flask import Flask
 from flask_cors import CORS
+from flask_socketio import SocketIO
 import logging
 import traceback
 
 from app.utils.logger import setup_logger, get_logger
+
+# Module-level SocketIO instance (importable by run.py / gunicorn)
+socketio = SocketIO()
 
 logger = get_logger(__name__)
 
@@ -171,7 +175,13 @@ def create_app(config_name='default'):
     app.config['JSON_AS_ASCII'] = False
     
     CORS(app)
-    
+
+    # Initialize SocketIO — auto-detect async mode:
+    # gunicorn+eventlet → eventlet mode; dev server (run.py) → threading mode
+    import os as _os
+    _async_mode = "eventlet" if _os.environ.get("GUNICORN_WORKER") else "threading"
+    socketio.init_app(app, cors_allowed_origins="*", async_mode=_async_mode)
+
     setup_logger()
     
     # Test PostgreSQL connectivity first so we can show a clear message if it's not running
@@ -270,6 +280,12 @@ def create_app(config_name='default'):
     
     from app.routes import register_routes
     register_routes(app)
+
+    # Register WebSocket event handlers and start price streamer
+    from app.routes.ws import register_ws_events
+    register_ws_events(socketio)
+    from app.services.price_streamer import init_streamer
+    init_streamer(socketio)
 
     # Serve pre-built frontend from web/dist/ (single-binary deploy).
     # In dev mode the Vue CLI dev server handles this; in production Flask serves

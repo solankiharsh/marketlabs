@@ -100,7 +100,7 @@ class CryptoDataSource(BaseDataSource):
                 ))
             
             klines = self.filter_and_limit(klines, limit, before_time)
-            self.log_result(symbol, klines, timeframe)
+            self.log_result(symbol, klines, timeframe, market='Crypto')
             
         except Exception as e:
             logger.error(f"Failed to fetch crypto K-lines {symbol}: {str(e)}")

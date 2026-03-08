@@ -1,9 +1,11 @@
 """
 Trading Strategy API Routes
 """
-from flask import Blueprint, request, jsonify, g
+from flask import Blueprint, request, jsonify, g, Response
 import traceback
 import time
+import csv
+import io
 
 from app.services.strategy import StrategyService
 from app.services.strategy_compiler import StrategyCompiler
@@ -958,4 +960,208 @@ def clear_notifications():
         return jsonify({'code': 1, 'msg': 'success'})
     except Exception as e:
         logger.error(f"clear_notifications failed: {str(e)}")
+        return jsonify({'code': 0, 'msg': str(e)}), 500
+
+
+@strategy_bp.route('/strategies/analytics', methods=['GET'])
+@login_required
+def get_strategy_analytics():
+    """
+    Get advanced performance analytics for a strategy.
+
+    Query params:
+        id: strategy_id (optional — omit for all strategies combined)
+
+    Returns: win_rate, profit_factor, sharpe_ratio, max_drawdown, expectancy,
+             max_consecutive_wins, max_consecutive_losses, avg_holding_time, etc.
+    """
+    import math
+    try:
+        user_id = g.user_id
+        strategy_id = request.args.get('id', type=int)
+
+        with get_db_connection() as db:
+            cur = db.cursor()
+            if strategy_id:
+                cur.execute(
+                    "SELECT profit, created_at FROM ml_strategy_trades "
+                    "WHERE strategy_id = %s ORDER BY id ASC",
+                    (strategy_id,)
+                )
+            else:
+                cur.execute(
+                    "SELECT profit, created_at FROM ml_strategy_trades "
+                    "WHERE user_id = %s ORDER BY id ASC",
+                    (user_id,)
+                )
+            rows = cur.fetchall() or []
+            cur.close()
+
+        if not rows:
+            return jsonify({'code': 1, 'msg': 'success', 'data': {
+                'total_trades': 0, 'win_rate': 0, 'profit_factor': 0,
+                'sharpe_ratio': 0, 'max_drawdown': 0, 'max_drawdown_pct': 0,
+                'expectancy': 0, 'max_consecutive_wins': 0, 'max_consecutive_losses': 0,
+                'avg_win': 0, 'avg_loss': 0, 'total_pnl': 0,
+            }})
+
+        profits = [float(r.get('profit', 0) or 0) for r in rows]
+        wins = [p for p in profits if p > 0]
+        losses = [p for p in profits if p < 0]
+        total = len(profits)
+
+        # Basic stats
+        win_rate = (len(wins) / total * 100) if total > 0 else 0
+        total_profit = sum(wins) if wins else 0
+        total_loss = abs(sum(losses)) if losses else 0
+        profit_factor = (total_profit / total_loss) if total_loss > 0 else total_profit
+        avg_win = (total_profit / len(wins)) if wins else 0
+        avg_loss = (total_loss / len(losses)) if losses else 0
+        total_pnl = sum(profits)
+
+        # Expectancy: avg_win * win_pct - avg_loss * loss_pct
+        win_pct = len(wins) / total if total > 0 else 0
+        loss_pct = len(losses) / total if total > 0 else 0
+        expectancy = avg_win * win_pct - avg_loss * loss_pct
+
+        # Sharpe Ratio (annualized, assuming daily returns)
+        if len(profits) > 1:
+            mean_return = sum(profits) / len(profits)
+            variance = sum((p - mean_return) ** 2 for p in profits) / (len(profits) - 1)
+            std_dev = math.sqrt(variance) if variance > 0 else 0
+            sharpe_ratio = (mean_return / std_dev * math.sqrt(252)) if std_dev > 0 else 0
+        else:
+            sharpe_ratio = 0
+
+        # Max drawdown
+        cumulative = []
+        acc = 0.0
+        for p in profits:
+            acc += p
+            cumulative.append(acc)
+        peak = 0.0
+        max_dd = 0.0
+        for val in cumulative:
+            if val > peak:
+                peak = val
+            dd = peak - val
+            if dd > max_dd:
+                max_dd = dd
+        max_dd_pct = (max_dd / peak * 100) if peak > 0 else 0
+
+        # Consecutive wins/losses
+        max_con_wins = 0
+        max_con_losses = 0
+        cur_wins = 0
+        cur_losses = 0
+        for p in profits:
+            if p > 0:
+                cur_wins += 1
+                cur_losses = 0
+                max_con_wins = max(max_con_wins, cur_wins)
+            elif p < 0:
+                cur_losses += 1
+                cur_wins = 0
+                max_con_losses = max(max_con_losses, cur_losses)
+            else:
+                cur_wins = 0
+                cur_losses = 0
+
+        return jsonify({'code': 1, 'msg': 'success', 'data': {
+            'total_trades': total,
+            'winning_trades': len(wins),
+            'losing_trades': len(losses),
+            'win_rate': round(win_rate, 2),
+            'profit_factor': round(profit_factor, 2),
+            'sharpe_ratio': round(sharpe_ratio, 2),
+            'max_drawdown': round(max_dd, 2),
+            'max_drawdown_pct': round(max_dd_pct, 2),
+            'expectancy': round(expectancy, 2),
+            'avg_win': round(avg_win, 2),
+            'avg_loss': round(avg_loss, 2),
+            'total_pnl': round(total_pnl, 2),
+            'max_consecutive_wins': max_con_wins,
+            'max_consecutive_losses': max_con_losses,
+            'max_win': round(max(profits), 2) if profits else 0,
+            'max_loss': round(min(profits), 2) if profits else 0,
+        }})
+    except Exception as e:
+        logger.error(f"get_strategy_analytics failed: {str(e)}")
+        logger.error(traceback.format_exc())
+        return jsonify({'code': 0, 'msg': str(e)}), 500
+
+
+@strategy_bp.route('/strategies/trades/export', methods=['GET'])
+@login_required
+def export_trades():
+    """
+    Export trade records as CSV or JSON.
+
+    Query params:
+        id: strategy_id (optional — omit for all)
+        format: 'csv' or 'json' (default: csv)
+    """
+    try:
+        user_id = g.user_id
+        strategy_id = request.args.get('id', type=int)
+        fmt = (request.args.get('format') or 'csv').strip().lower()
+
+        with get_db_connection() as db:
+            cur = db.cursor()
+            if strategy_id:
+                cur.execute(
+                    "SELECT t.id, t.strategy_id, s.name as strategy_name, t.symbol, t.type, "
+                    "t.price, t.amount, t.value, t.commission, t.commission_ccy, t.profit, t.created_at "
+                    "FROM ml_strategy_trades t "
+                    "LEFT JOIN ml_strategies_trading s ON t.strategy_id = s.id "
+                    "WHERE t.strategy_id = %s ORDER BY t.id DESC",
+                    (strategy_id,)
+                )
+            else:
+                cur.execute(
+                    "SELECT t.id, t.strategy_id, s.name as strategy_name, t.symbol, t.type, "
+                    "t.price, t.amount, t.value, t.commission, t.commission_ccy, t.profit, t.created_at "
+                    "FROM ml_strategy_trades t "
+                    "LEFT JOIN ml_strategies_trading s ON t.strategy_id = s.id "
+                    "WHERE t.user_id = %s ORDER BY t.id DESC",
+                    (user_id,)
+                )
+            rows = cur.fetchall() or []
+            cur.close()
+
+        # Convert datetimes to strings
+        trades = []
+        for row in rows:
+            trade = dict(row)
+            if trade.get('created_at') and hasattr(trade['created_at'], 'isoformat'):
+                trade['created_at'] = trade['created_at'].isoformat()
+            # Convert Decimal to float for JSON serialization
+            for k in ('price', 'amount', 'value', 'commission', 'profit'):
+                if trade.get(k) is not None:
+                    trade[k] = float(trade[k])
+            trades.append(trade)
+
+        if fmt == 'json':
+            return jsonify({'code': 1, 'msg': 'success', 'data': trades})
+
+        # CSV export
+        if not trades:
+            return Response("No trades found\n", mimetype='text/csv',
+                          headers={'Content-Disposition': 'attachment; filename=trades.csv'})
+
+        output = io.StringIO()
+        fieldnames = ['id', 'strategy_id', 'strategy_name', 'symbol', 'type',
+                     'price', 'amount', 'value', 'commission', 'commission_ccy', 'profit', 'created_at']
+        writer = csv.DictWriter(output, fieldnames=fieldnames, extrasaction='ignore')
+        writer.writeheader()
+        for trade in trades:
+            writer.writerow(trade)
+
+        return Response(
+            output.getvalue(),
+            mimetype='text/csv',
+            headers={'Content-Disposition': 'attachment; filename=trades.csv'}
+        )
+    except Exception as e:
+        logger.error(f"export_trades failed: {str(e)}")
         return jsonify({'code': 0, 'msg': str(e)}), 500

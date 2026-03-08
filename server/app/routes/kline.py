@@ -3,10 +3,12 @@ K-line (Candlestick) Data API Routes
 """
 from flask import Blueprint, request, jsonify
 from datetime import datetime
+import time
 import traceback
 
 from app.services.kline import KlineService
 from app.utils.logger import get_logger
+from app.utils.market_hours import get_market_status
 
 logger = get_logger(__name__)
 
@@ -68,10 +70,19 @@ def get_kline():
                 'hint': 'tiingo_subscription' if (market == 'Forex' and timeframe == '1m') else None
             })
         
+        market_status = get_market_status(market)
+        meta = {
+            'market_open': market_status['is_open'],
+            'data_age_seconds': int(time.time() - klines[-1]['time']) if klines else None,
+            'timeframe': timeframe,
+            'count': len(klines),
+        }
+
         return jsonify({
             'code': 1,
             'msg': 'success',
-            'data': klines
+            'data': klines,
+            'meta': meta,
         })
         
     except Exception as e:

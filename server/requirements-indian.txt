@@ -1,0 +1,11 @@
+# Optional dependencies for Indian market live trading
+# Install these only if you plan to use Zerodha or Angel One for live trading
+
+# Zerodha Kite Connect API
+kiteconnect>=5.0.0
+
+# Angel One SmartAPI
+smartapi-python>=1.3
+
+# TOTP generation for Angel One 2FA
+pyotp>=2.8.0

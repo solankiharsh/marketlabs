@@ -6,6 +6,7 @@ from typing import Dict, List, Any, Optional
 from app.data_sources import DataSourceFactory
 from app.utils.cache import CacheManager
 from app.utils.logger import get_logger
+from app.utils.market_hours import is_market_open
 from app.config import CacheConfig
 
 logger = get_logger(__name__)
@@ -18,6 +19,13 @@ class KlineService:
         self.cache = CacheManager()
         self.cache_ttl = CacheConfig.KLINE_CACHE_TTL
     
+    def _get_cache_ttl(self, market: str, timeframe: str) -> int:
+        """Get cache TTL, extended when market is closed."""
+        base_ttl = self.cache_ttl.get(timeframe, 300)
+        if not is_market_open(market):
+            return max(base_ttl, 600)  # at least 10 minutes when closed
+        return base_ttl
+
     def get_kline(
         self,
         market: str,
@@ -58,7 +66,7 @@ class KlineService:
         
         # Set cache (latest data only)
         if klines and not before_time:
-            ttl = self.cache_ttl.get(timeframe, 300)
+            ttl = self._get_cache_ttl(market, timeframe)
             self.cache.set(cache_key, klines, ttl)
             # logger.info(f"Cache set: {cache_key}, TTL: {ttl}s")
         

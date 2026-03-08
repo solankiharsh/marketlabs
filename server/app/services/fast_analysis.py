@@ -434,6 +434,18 @@ Provide your analysis now. Remember: all prices must be within 10% of ${current_
             direction = "↑" if btc.get('change', 0) > 0 else "↓"
             lines.append(f"- {btc.get('name', 'BTC')}: ${btc.get('price', 'N/A'):,.0f} ({direction}{abs(btc.get('changePercent', 0)):.2f}%) [risk appetite indicator]")
 
+        # Indian market context
+        if market == 'IndianStock':
+            lines.append("\n⚠️ INDIAN MARKET CONTEXT:")
+            lines.append("- NSE trading hours: 9:15 AM - 3:30 PM IST (Mon-Fri)")
+            lines.append("- Currency: INR (Indian Rupee)")
+            lines.append("- Circuit limits: 5%/10%/20% for individual stocks")
+            lines.append("- T+1 settlement cycle")
+            if 'DXY' in macro:
+                dxy_change = macro['DXY'].get('change', 0)
+                if dxy_change > 0:
+                    lines.append("  ⚠️ USD strengthening may pressure INR and FII flows")
+
         return "\n".join(lines) if lines else "Macro data not available"
     
     # ==================== Main Analysis ====================
