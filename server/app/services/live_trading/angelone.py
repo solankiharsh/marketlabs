@@ -322,6 +322,15 @@ class AngelOneClient(BaseRestClient):
 
     # ========== Account ==========
 
+    def ping(self) -> bool:
+        """Connectivity check — logs in and fetches profile to verify credentials."""
+        try:
+            self.login()
+            profile = self.get_profile()
+            return bool(profile)
+        except Exception:
+            return False
+
     def get_rms(self) -> Dict[str, Any]:
         """Get risk management system (margin) data."""
         return self._smart_request("GET", "/rest/secure/angelbroking/user/v1/getRMS")
