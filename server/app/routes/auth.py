@@ -25,6 +25,8 @@ def _build_frontend_login_redirect(frontend_url: str, **params) -> str:
     base = (frontend_url or '').strip().rstrip('/')
     if not base:
         base = 'http://localhost:8000'
+    elif not base.startswith(('http://', 'https://')):
+        base = f'https://{base}'
 
     if '/#/' in base:
         origin = base.split('/#/', 1)[0].rstrip('/')
