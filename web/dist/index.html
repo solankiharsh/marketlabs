@@ -28,7 +28,7 @@
         max-width: 600px;
       }
       
-      /* animated pixel cat */
+      /* Pixel cat running animation container */
       .pixel-cat-container {
         position: relative;
         width: 100%;
@@ -37,7 +37,7 @@
         overflow: hidden;
       }
       
-      /* animated pixel cat body */
+      /* Pixel cat body */
       .pixel-cat {
         position: absolute;
         left: 0;
@@ -50,14 +50,14 @@
         image-rendering: crisp-edges;
       }
       
-      /* all pixel elements use sharp edges */
+      /* All pixel elements use crisp edges */
       .pixel-cat * {
         image-rendering: pixelated;
         image-rendering: -moz-crisp-edges;
         image-rendering: crisp-edges;
       }
       
-      /* cat head - pixel squares */
+      /* Cat head - composed of pixel blocks */
       .cat-head {
         position: absolute;
         left: 2px;
@@ -65,16 +65,16 @@
         width: 16px;
         height: 14px;
         background: 
-          /* head body white */
+          /* Head body white */
           linear-gradient(#fff, #fff) 2px 4px / 12px 10px no-repeat,
-          /* left half face black斑块 */
+          /* Left half face black patch */
           linear-gradient(#000, #000) 2px 4px / 6px 10px no-repeat,
-          /* top */
+          /* Top of head */
           linear-gradient(#fff, #fff) 4px 2px / 8px 2px no-repeat;
         animation: headBob 0.4s steps(2) infinite;
       }
       
-      /* left ear - black sharp ears */
+      /* Left ear - black pointed ear */
       .cat-ear-left {
         position: absolute;
         left: 0px;
@@ -87,7 +87,7 @@
           linear-gradient(#000, #000) 1px 0px / 2px 2px no-repeat;
       }
       
-      /* right ear - white sharp ears */
+      /* Right ear - white pointed ear */
       .cat-ear-right {
         position: absolute;
         right: 0px;
@@ -111,7 +111,7 @@
         box-sizing: border-box;
       }
       
-      /* left eye - black bottom white eye in black area */
+      /* Left eye - white on black area */
       .cat-eye-left {
         position: absolute;
         left: 4px;
@@ -131,7 +131,7 @@
         background: #000;
       }
       
-      /* right eye - white bottom black eye in white area */
+      /* Right eye - black on white area */
       .cat-eye-right {
         position: absolute;
         right: 2px;
@@ -153,7 +153,7 @@
         background: #000;
       }
       
-      /* nose - small pink squares */
+      /* Nose - small pixel block */
       .cat-nose {
         position: absolute;
         left: 7px;
@@ -163,7 +163,7 @@
         background: #000;
       }
       
-      /* whiskers - pixel lines */
+      /* Whiskers - pixel lines */
       .cat-whiskers {
         position: absolute;
         left: 0;
@@ -194,7 +194,7 @@
         box-shadow: 0 2px 0 #000;
       }
       
-      /* body - black and white pixel blocks */
+      /* Body - black and white pixel blocks */
       .cat-body {
         position: absolute;
         left: 4px;
@@ -202,15 +202,15 @@
         width: 14px;
         height: 10px;
         background: 
-          /* white part */
+          /* White section */
           linear-gradient(#fff, #fff) 6px 0 / 8px 10px no-repeat,
-          /* black part */
+          /* Black section */
           linear-gradient(#000, #000) 0 0 / 8px 10px no-repeat;
         border: 1px solid #000;
         box-sizing: border-box;
       }
       
-      /* front leg - left (black) */
+      /* Front leg - left (black) */
       .cat-leg-front-left {
         position: absolute;
         left: 6px;
@@ -221,7 +221,7 @@
         animation: legFront 0.2s steps(2) infinite;
       }
       
-      /* front leg - right (white with border) */
+      /* Front leg - right (white with border) */
       .cat-leg-front-right {
         position: absolute;
         left: 12px;
@@ -234,7 +234,7 @@
         animation: legFront 0.2s steps(2) infinite 0.1s;
       }
       
-      /* back leg - left (white with border) */
+      /* Back leg - left (white with border) */
       .cat-leg-back-left {
         position: absolute;
         left: 3px;
@@ -247,7 +247,7 @@
         animation: legBack 0.2s steps(2) infinite 0.1s;
       }
       
-      /* back leg - right (black) */
+      /* Back leg - right (black) */
       .cat-leg-back-right {
         position: absolute;
         left: 15px;
@@ -258,7 +258,7 @@
         animation: legBack 0.2s steps(2) infinite;
       }
       
-      /* tail - long and curved pixel tail */
+      /* Tail - long curved pixel tail */
       .cat-tail {
         position: absolute;
         right: -10px;
@@ -266,55 +266,55 @@
         width: 12px;
         height: 10px;
         background: 
-          /* tail root */
+          /* Tail base */
           linear-gradient(#000, #000) 0 6px / 3px 3px no-repeat,
-          /* tail middle */
+          /* Tail middle */
           linear-gradient(#000, #000) 3px 4px / 3px 3px no-repeat,
-          /* tail curved */
+          /* Tail curve */
           linear-gradient(#000, #000) 6px 2px / 3px 3px no-repeat,
-          /* tail tip */
+          /* Tail tip */
           linear-gradient(#000, #000) 9px 0 / 3px 3px no-repeat;
         animation: tailWag 0.3s steps(2) infinite alternate;
         transform-origin: left bottom;
       }
       
-      /* running animation - slight up and down motion */
+      /* Running animation - slight bounce */
       @keyframes catRun {
         0%, 100% { transform: translateY(0); }
         50% { transform: translateY(-3px); }
       }
       
-      /* moving animation - left and right movement */
+      /* Movement animation - left to right */
       @keyframes catMove {
         0% { left: -40px; }
         100% { left: calc(100% + 40px); }
       }
       
-      /* front leg animation */
+      /* Front leg animation */
       @keyframes legFront {
         0%, 100% { transform: rotate(-15deg); }
         50% { transform: rotate(15deg); }
       }
       
-      /* back leg animation */
+      /* Back leg animation */
       @keyframes legBack {
         0%, 100% { transform: rotate(15deg); }
         50% { transform: rotate(-15deg); }
       }
       
-      /* tail wagging */
+      /* Tail wag */
       @keyframes tailWag {
         0% { transform: rotate(-10deg); }
         100% { transform: rotate(10deg); }
       }
       
-      /* head bob in slight bob motion */
+      /* Head bob */
       @keyframes headBob {
         0%, 100% { transform: translateY(0); }
         50% { transform: translateY(-1px); }
       }
       
-      /* ground effect - pixel style in pixel style ground */
+      /* Ground effect - pixel style */
       .ground {
         position: absolute;
         bottom: 0;
@@ -337,7 +337,7 @@
         100% { background-position: 12px 0; }
       }
       
-      /* brand text */
+      /* Brand text */
       .brand-text {
         display: flex;
         justify-content: center;
@@ -349,7 +349,7 @@
         letter-spacing: 2px;
       }
       
-      /* dark theme adaptation */
+      /* Dark theme */
       @media (prefers-color-scheme: dark) {
         .first-loading-wrp {
           background: #141414;
@@ -373,7 +373,7 @@
           );
         }
         
-        /* in dark mode, white part changed to light gray */
+        /* Dark mode: white sections become light gray */
         .cat-head {
           background: 
             linear-gradient(#ddd, #ddd) 2px 4px / 12px 10px no-repeat,
@@ -398,7 +398,7 @@
         }
       }
       
-      /* ensure pixel style is displayed correctly in all browsers */
+      /* Ensure pixel style renders correctly in all browsers */
       .pixel-cat,
       .pixel-cat * {
         image-rendering: -moz-crisp-edges;
@@ -407,7 +407,7 @@
         image-rendering: crisp-edges;
       }
       
-      /* mobile adaptation */
+      /* Mobile responsive */
       @media (max-width: 768px) {
         .pixel-cat-container {
           transform: scale(1.5);
@@ -421,4 +421,4 @@
         .brand-text {
           font-size: 20px;
         }
-      }</style><script defer="defer" src="/js/chunk-vendors.8dddeea9.js" type="module"></script><script defer="defer" src="/js/app.6b61d17c.js" type="module"></script><link href="/css/chunk-vendors.2bf13f0f.css" rel="stylesheet"><link href="/css/app.baf31ae5.css" rel="stylesheet"><script defer="defer" src="/js/chunk-vendors-legacy.669c9f53.js" nomodule></script><script defer="defer" src="/js/app-legacy.be3d06c7.js" nomodule></script></head><body><noscript><strong>We're sorry but vue-antd-pro doesn't work properly without JavaScript enabled. Please enable it to continue.</strong></noscript><div id="app"><div class="first-loading-wrp"><h2>Landing</h2><div class="loading-wrp"><div class="pixel-cat-container"><div class="ground"></div><div class="pixel-cat"><div class="cat-head"><div class="cat-ear-left"></div><div class="cat-ear-right"></div><div class="cat-eye-left"></div><div class="cat-eye-right"></div><div class="cat-nose"></div><div class="cat-whiskers"></div></div><div class="cat-body"></div><div class="cat-leg-front-left"></div><div class="cat-leg-front-right"></div><div class="cat-leg-back-left"></div><div class="cat-leg-back-right"></div><div class="cat-tail"></div></div></div></div><div class="brand-text">MarketLabs</div></div></div></body></html>
+      }</style><script defer="defer" src="/js/chunk-vendors.cd0f1ea7.js" type="module"></script><script defer="defer" src="/js/app.e0ef5d9c.js" type="module"></script><link href="/css/chunk-vendors.2bf13f0f.css" rel="stylesheet"><link href="/css/app.baf31ae5.css" rel="stylesheet"><script defer="defer" src="/js/chunk-vendors-legacy.94ccc816.js" nomodule></script><script defer="defer" src="/js/app-legacy.cd1f0d20.js" nomodule></script></head><body><noscript><strong>We're sorry but vue-antd-pro doesn't work properly without JavaScript enabled. Please enable it to continue.</strong></noscript><div id="app"><div class="first-loading-wrp"><h2>Landing</h2><div class="loading-wrp"><div class="pixel-cat-container"><div class="ground"></div><div class="pixel-cat"><div class="cat-head"><div class="cat-ear-left"></div><div class="cat-ear-right"></div><div class="cat-eye-left"></div><div class="cat-eye-right"></div><div class="cat-nose"></div><div class="cat-whiskers"></div></div><div class="cat-body"></div><div class="cat-leg-front-left"></div><div class="cat-leg-front-right"></div><div class="cat-leg-back-left"></div><div class="cat-leg-back-right"></div><div class="cat-tail"></div></div></div></div><div class="brand-text">MarketLabs</div></div></div></body></html>

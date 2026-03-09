@@ -1,201 +1,257 @@
-# MarketLabs - Market Intelligence Platform
+# MarketLabs — AI-Native Quantitative Trading Platform
 
-A proactive market intelligence platform for Deriv assets that transforms single-ticker analysis into a multi-asset scanning system with ranked setup detection, composite scoring, and Telegram-ready partner signals.
-
-## Overview
-
-MarketLabs is built on top of the supermolt-mono tech stack (Hono backend + Next.js frontend) and adapts satori-x's market analysis concepts for human users. The platform proactively scans 20+ Deriv assets, detects ranked setups with composite scoring, and provides compact indicator tables with bite-size/full analysis toggle.
-
-## Features
-
-- ✅ **Proactive Asset Scanning**: Automatically scans 20+ Deriv assets (Forex, Crypto, Commodities, Indices) every 5 minutes
-- ✅ **Composite Scoring**: Ranked setup detection with 0-100 composite score combining technical indicators, patterns, momentum, and volatility
-- ✅ **Compact Indicator Tables**: Display indicators in compact table format (not verbose paragraphs)
-- ✅ **Bite-size vs Full Analysis Toggle**: Switch between compact summary and detailed analysis
-- ✅ **Partner Signal Generation**: Generate Telegram-ready signals for top-ranked setups
+AI-powered market analysis platform with custom indicator creation, automated trading strategies, and multi-market support spanning Crypto, US Stocks, Forex, and Indian Stocks. Features real-time portfolio monitoring, community indicator marketplace, and integration with 20+ exchanges and brokers.
 
 ## Tech Stack
 
-- **Backend**: Hono, TypeScript, Prisma, PostgreSQL, Privy auth
-- **Frontend**: Next.js 16, React 19, Tailwind CSS, shadcn/ui, Zustand
-- **External APIs**: Deriv WebSocket/REST API
-- **Deployment**: Railway (backend) / Vercel (frontend)
+| Layer | Technologies |
+|-------|-------------|
+| **Backend** | Python Flask, PostgreSQL, gunicorn + eventlet (WebSocket), Flask-SocketIO |
+| **Frontend** | Vue.js 2, Ant Design Vue, ECharts |
+| **Data Sources** | yfinance, ccxt (crypto), finnhub (US stocks), akshare (Asian markets) |
+| **AI / LLM** | OpenRouter (multi-model gateway), OpenAI, Google Gemini, DeepSeek, xAI Grok |
+| **Live Trading** | Binance, Bybit, OKX, Bitget, KuCoin, Gate, Coinbase, Kraken, IBKR (US stocks), MT5 (Forex), Zerodha, Angel One + 6 more Indian brokers |
+| **Deployment** | Railway (Docker) |
+| **Notifications** | Email (SMTP), Telegram bot, browser push |
+
+## Quick Start
+
+### Prerequisites
+
+- Python 3.10+
+- Node.js 20+
+- PostgreSQL 15+
+- Homebrew (macOS)
+
+### Setup
+
+```bash
+# 1. Copy environment config
+make setup
+# Edit server/.env with your API keys (see server/env.example for full list)
+
+# 2. Create database
+make postgres-create-db
+
+# 3. Start backend + frontend
+make dev
+```
+
+| Service | URL |
+|---------|-----|
+| Backend | http://localhost:5000 |
+| Frontend | http://localhost:8000 |
+
+**Default login**: `marketlabs` / `123456`
+
+### Other Make Commands
+
+```bash
+make dev-backend     # Start backend only
+make dev-web         # Start frontend only
+make build-web       # Build Vue into server/dist/ for deployment
+make postgres-start  # Start Homebrew PostgreSQL
+make postgres-stop   # Stop Homebrew PostgreSQL
+make postgres-status # Check PostgreSQL status
+make migrate         # Run database migrations
+```
+
+## Features
+
+### Dashboard
+
+KPI summary showing total equity, active strategies, P&L, and win rate. Displays pending orders list.
+
+**How to test**: Login → Dashboard is the home page. Create a strategy first to see data populate.
+
+### AI Analysis (Global Market)
+
+- Market heatmaps: Crypto, US Stocks, Forex, India
+- Financial news feed with language selection
+- Economic calendar
+- Market sentiment (Fear & Greed Index, VIX)
+- Trading opportunities scanner
+
+**How to test**: Navigate to AI Analysis → click heatmap tabs (Crypto / US / Forex / India). Check News tab. Check Calendar tab.
+
+### Fast AI Analysis (Per-Asset)
+
+Select a market, symbol, AI model, and timeframe to generate a comprehensive analysis with buy/sell recommendation, confidence score, and risk assessment. Supports multiple LLM providers with real-time progress updates. Analysis memory learns from past analyses to improve future results.
+
+**How to test**: Go to AI Analysis → select a symbol (e.g., BTC/USDT, Crypto market) → pick a model → click Analyze. Requires an LLM API key configured in Settings.
+
+### Indicator Analysis
+
+Write custom trading indicators in Python using a built-in sandbox with `pandas` and `numpy`. Backtest indicators against historical data and publish them to the community marketplace.
+
+Convention: define `my_indicator_name`, `my_indicator_description`, and operate on the `df` DataFrame.
+
+**How to test**: Go to Indicator Analysis → click "Create Indicator" → write Python code:
+
+```python
+my_indicator_name = "Golden Cross"
+my_indicator_description = "SMA 50/200 crossover signal"
+
+df['sma50'] = df['close'].rolling(50).mean()
+df['sma200'] = df['close'].rolling(200).mean()
+df['signal'] = (df['sma50'] > df['sma200']).astype(int)
+```
+
+Save → Run backtest on a symbol.
+
+### Indicator Community / Marketplace
+
+Browse, search, and purchase published indicators (free and paid). Filter by pricing, sort by newest/hot/rating. Rate and comment on indicators.
+
+**How to test**: Go to Community page → browse available indicators → search by keyword.
+
+### Trading Assistant (Strategy Creation)
+
+Create automated trading strategies from indicators with support for paper trading (no real orders) or live trading.
+
+**Supported markets and exchanges:**
+
+| Market | Exchanges / Brokers |
+|--------|-------------------|
+| **Crypto** | Binance, Bybit, OKX, Bitget, KuCoin, Gate, Coinbase, Kraken, Bitfinex, DeepCoin |
+| **US Stocks** | Interactive Brokers (IBKR via TWS / IB Gateway) |
+| **Forex** | MetaTrader 5 (Windows only) |
+| **Indian Stocks** | Zerodha, Angel One, Upstox, Fyers, Dhan, Kotak Neo, Shoonya, Flattrade |
+
+Strategy lifecycle: create → start → monitor → stop. Order modes: market or maker (limit then market fallback). Test connection before going live. Export strategy history as CSV.
+
+**How to test**:
+
+1. Go to Trading Assistant → click "Create Strategy"
+2. Select market (e.g., Crypto), symbol (e.g., BTC/USDT)
+3. Choose an indicator from your library
+4. Set parameters: timeframe, quantity, take-profit, stop-loss
+5. For paper trading: leave exchange credentials empty
+6. For live trading: add exchange credentials (API key + secret), test connection, then enable live mode
+7. Click Save → Start strategy
+
+### Portfolio
+
+Track manual positions (existing holdings) across all markets with real-time P&L via live price feeds. Schedule AI monitoring on your positions for automated analysis alerts. Export portfolio as CSV.
+
+**How to test**: Go to Portfolio → click "Add Position" → enter symbol (e.g., AAPL), market (USStock), quantity, entry price → Save.
+
+### Settings (Admin Only)
+
+Configure all system settings via UI: security/auth, LLM provider + API keys, data sources, email/SMTP, billing, and feature toggles. Changes write directly to the `.env` file.
+
+**How to test**: Login as admin → go to Settings → configure LLM provider (e.g., set `OPENROUTER_API_KEY`) → Save.
+
+### User Management (Admin Only)
+
+List, search, create, edit, and delete users. Manage roles (admin / user) and view user activity.
+
+**How to test**: Login as admin → go to User Management → view user list.
+
+### Billing & Credits
+
+Credit-based system for paid features (AI analysis, strategy runs, backtests). Membership plans: Monthly ($19.9), Yearly ($199), Lifetime ($499). USDT payment support (TRC20). Includes registration bonus and referral bonus credits. Per-feature costs are configurable via environment variables.
+
+**How to test**: Set `BILLING_ENABLED=True` in `.env` → check Billing page for plans.
+
+### Authentication
+
+- Username/password login with bcrypt hashing
+- User registration (toggle with `ENABLE_REGISTRATION`)
+- OAuth: Google, GitHub
+- Cloudflare Turnstile captcha
+- IP + account rate limiting (anti-brute-force)
+- JWT-based session tokens
+
+### Real-time Features
+
+- WebSocket price streaming (Flask-SocketIO)
+- Live strategy monitoring
+- Real-time portfolio value updates
+
+### Notifications
+
+- Email (SMTP)
+- Telegram bot integration
+- Portfolio AI monitoring alerts
+
+## Environment Variables
+
+See [`server/env.example`](server/env.example) for the full list. Key variables:
+
+| Variable | Description |
+|----------|-------------|
+| `DATABASE_URL` | PostgreSQL connection string |
+| `SECRET_KEY` | Application secret for JWT signing |
+| `LLM_PROVIDER` | AI provider: `openrouter`, `openai`, `google`, `deepseek`, `grok` |
+| `OPENROUTER_API_KEY` | API key for OpenRouter (recommended multi-model gateway) |
+| `BILLING_ENABLED` | Enable credit-based billing system |
+| `IS_DEMO_MODE` | Read-only mode for public demos |
+| `ENABLE_REGISTRATION` | Allow new user registration |
 
 ## Project Structure
 
 ```
 marketlabs/
-├── backend/              # Hono + TypeScript backend
-│   ├── src/
-│   │   ├── routes/       # API routes
-│   │   ├── services/     # Business logic
-│   │   ├── lib/          # Utilities (Privy, DB, etc.)
-│   │   └── index.ts      # Hono app entry
-│   └── prisma/           # Database schema
-└── web/                  # Next.js frontend
-    ├── app/              # Next.js pages
-    ├── components/       # React components
-    ├── lib/              # API client, utilities
-    └── store/            # Zustand state
+├── server/                  # Python Flask backend
+│   ├── app/
+│   │   ├── routes/          # API endpoints (19 blueprints)
+│   │   ├── services/        # Business logic
+│   │   │   ├── live_trading/ # Exchange clients (Binance, Bybit, etc.)
+│   │   │   ├── ibkr_trading/ # Interactive Brokers integration
+│   │   │   └── mt5_trading/  # MetaTrader 5 integration
+│   │   ├── data_sources/    # Market data providers
+│   │   └── utils/           # Auth, DB, logging, caching
+│   ├── migrations/          # SQL schema (init.sql)
+│   ├── dist/                # Pre-built Vue frontend (served by Flask)
+│   └── run.py               # Dev server entry point
+├── web/                     # Vue.js frontend (source, gitignored)
+│   ├── src/views/           # Page components
+│   ├── src/locales/         # i18n (10 languages)
+│   └── src/config/          # Router, API config
+├── Makefile                 # Dev commands
+└── docs/                    # Documentation
 ```
 
-## Setup
+## API Reference
 
-### Backend
+| Prefix | Description |
+|--------|-------------|
+| `/api/auth/*` | Authentication (login, register, OAuth) |
+| `/api/dashboard/*` | Dashboard metrics |
+| `/api/fast-analysis/*` | AI analysis |
+| `/api/indicator/*` | Indicators + backtesting |
+| `/api/strategies/*` | Trading strategies |
+| `/api/market/*` | Watchlist, symbols, pricing |
+| `/api/portfolio/*` | Portfolio positions |
+| `/api/global-market/*` | Heatmaps, news, calendar |
+| `/api/community/*` | Indicator marketplace |
+| `/api/credentials/*` | Exchange credential vault |
+| `/api/settings/*` | System settings (admin) |
+| `/api/users/*` | User management (admin) |
+| `/api/billing/*` | Credits & membership |
+| `/api/indian-broker/*` | Indian broker instruments & auth |
 
-1. Install dependencies:
+## Deployment
+
+Railway auto-deploys from git push. To deploy:
+
 ```bash
-cd backend
-npm install
+make build-web    # Build Vue into server/dist/
+git add server/dist/ && git commit -m "build: update frontend"
+git push           # Railway auto-deploys
 ```
 
-2. Set up environment variables (create `.env` file in the `backend` directory):
-```bash
-# Create .env file from example (or create manually)
-cd backend
-cp .env.example .env  # If .env.example exists, or create manually
-```
+Docker: uses the Dockerfile in `server/`. See [`docs/DEPLOY_RAILWAY.md`](docs/DEPLOY_RAILWAY.md) for the full deployment guide.
 
-Then edit `.env` and set the required variables:
-```env
-PORT=3002
-NODE_ENV=development
-PRIVY_APP_ID=dev-privy-app-id
-PRIVY_APP_SECRET=dev-privy-app-secret
-JWT_SECRET=your_jwt_secret_minimum_32_characters_long_please_change_this
-DATABASE_URL=postgresql://user:password@localhost:5432/marketlabs
-DERIV_APP_ID=1089
-DERIV_WS_URL=wss://ws.binaryws.com/websockets/v3
-OPENAI_API_KEY=optional_for_ai_analysis
-```
+## Supported Languages
 
-**Important**: 
-- `JWT_SECRET` must be at least 32 characters long
-- `DATABASE_URL` must point to a valid PostgreSQL database
-- For local development, you can use a local PostgreSQL instance or a service like [Supabase](https://supabase.com) (free tier available)
+English, Chinese (Simplified/Traditional), Korean, Japanese, Thai, Vietnamese, Arabic, German, French
 
-**DATABASE_URL Format:**
-```
-postgresql://USERNAME:PASSWORD@HOST:PORT/DATABASE
-```
+## Demo Mode
 
-Examples:
-- Local with password: `postgresql://postgres:mypassword@localhost:5432/marketlabs`
-- Local without password: `postgresql://postgres@localhost:5432/marketlabs`
-- Supabase: `postgresql://postgres:[YOUR-PASSWORD]@db.[PROJECT-REF].supabase.co:5432/postgres`
-
-**Test your connection:**
-```bash
-cd backend
-npm run db:test  # Tests database connection
-```
-
-3. Set up database:
-
-First, ensure the `marketlabs` database exists. You have a few options:
-
-**Option A: Use the provided script (recommended)**
-```bash
-cd backend
-npm run db:create  # Creates the database if it doesn't exist
-npx prisma generate
-npx prisma db push
-```
-
-**Option B: Create database manually**
-
-If you have PostgreSQL CLI access:
-```bash
-# Connect to PostgreSQL and create the database
-psql -U postgres -h localhost -c "CREATE DATABASE marketlabs;"
-```
-
-If using Docker:
-```bash
-docker exec -it <postgres-container-name> psql -U postgres -c "CREATE DATABASE marketlabs;"
-```
-
-Or use a GUI tool like pgAdmin, DBeaver, or TablePlus to create the database.
-
-**Then run Prisma:**
-
-**Option A: Use migrations (recommended - won't drop existing tables)**
-```bash
-cd backend
-npx prisma generate
-npx prisma migrate dev --name init
-```
-
-**Option B: Use db push (will drop tables not in schema - use with caution)**
-```bash
-cd backend
-npx prisma generate
-npx prisma db push --accept-data-loss
-```
-
-⚠️ **Important**: If you're using the `supermolt` database, use **Option A (migrations)** to avoid dropping existing tables. Only use `db push` if you want a fresh database.
-
-4. Start the server:
-```bash
-npm run dev
-```
-
-Backend runs at: `http://localhost:3002`
-
-### Frontend
-
-1. Install dependencies:
-```bash
-cd web
-npm install
-```
-
-2. Set up environment variables (create `.env.local`):
-```env
-NEXT_PUBLIC_API_URL=http://localhost:3002
-```
-
-3. Start the development server:
-```bash
-npm run dev
-```
-
-Frontend runs at: `http://localhost:3000`
-
-## API Endpoints
-
-### Market
-- `GET /api/market/assets` - List all tracked assets
-- `GET /api/market/scans` - Latest scans with rankings
-- `GET /api/market/rankings` - Top-ranked setups
-- `GET /api/market/asset/:symbol` - Asset details with full analysis
-- `POST /api/market/scan` - Trigger manual scan
-
-### Partner Signals
-- `GET /api/partner-signals` - Get Telegram-ready signals
-- `POST /api/partner-signals/generate` - Generate new signals
-
-### Auth
-- `POST /auth/login` - Login with Privy token
-- `POST /auth/refresh` - Refresh JWT token
-- `GET /auth/me` - Get current user (protected)
-
-## Database Schema
-
-- `MarketAsset` - Tracked Deriv assets
-- `MarketScan` - Historical scans with technical indicators and scores
-- `PartnerSignal` - Generated Telegram-ready signals
-- `User` - User accounts (Privy auth)
-
-## Success Criteria (Beta - 2 weeks)
-
-- ✅ Proactive scanning of 20+ Deriv assets
-- ✅ Ranked setup detection with composite scoring
-- ✅ Compact indicator tables (not verbose paragraphs)
-- ✅ Bite-size vs. Full analysis toggle
-- ✅ Partner signal generation (Telegram-ready output)
+Set `IS_DEMO_MODE=true` to enable read-only mode for public demos. Blocks all POST/PUT/DELETE requests except login. Blocks access to settings and credentials.
 
 ## License
 
 Private and proprietary.
-
