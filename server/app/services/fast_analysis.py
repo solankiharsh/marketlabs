@@ -139,17 +139,19 @@ class FastAnalysisService:
             resistance = max(recent_highs) if recent_highs else current_price * 1.05
             support = min(recent_lows) if recent_lows else current_price * 0.95
             
-            # Volatility (ATR-like)
+            # True ATR (Average True Range) — accounts for gaps, not just intraday range
             if len(kline_data) >= 14:
-                ranges = []
-                for k in kline_data[-14:]:
-                    h = float(k.get("high", 0))
-                    l = float(k.get("low", 0))
-                    if h > 0 and l > 0:
-                        ranges.append(h - l)
-                atr = sum(ranges) / len(ranges) if ranges else 0
+                true_ranges = []
+                for i in range(1, min(15, len(kline_data))):
+                    h = float(kline_data[i].get("high", 0))
+                    l = float(kline_data[i].get("low", 0))
+                    prev_c = float(kline_data[i - 1].get("close", 0))
+                    if h > 0 and l > 0 and prev_c > 0:
+                        tr = max(h - l, abs(h - prev_c), abs(l - prev_c))
+                        true_ranges.append(tr)
+                atr = sum(true_ranges) / len(true_ranges) if true_ranges else 0
                 volatility_pct = (atr / current_price * 100) if current_price > 0 else 0
-                
+
                 if volatility_pct > 5:
                     volatility = "high"
                 elif volatility_pct > 2:
@@ -159,6 +161,7 @@ class FastAnalysisService:
             else:
                 volatility = "unknown"
                 volatility_pct = 0
+                atr = 0
             
             return {
                 "current_price": round(current_price, 6),
@@ -187,6 +190,7 @@ class FastAnalysisService:
                 "volatility": {
                     "level": volatility,
                     "pct": round(volatility_pct, 2),
+                    "atr": round(atr, 6),
                 },
                 "raw": raw_indicators,
             }
@@ -277,16 +281,50 @@ class FastAnalysisService:
         resistance = levels.get("resistance", current_price * 1.05)
         pivot = levels.get("pivot", current_price)
         
-        # Use ATR-based suggestions if available, otherwise use percentage
+        # ATR-aware stop loss and take profit
+        # Rule: stop must be > 1x ATR from entry to avoid being wicked out by normal noise
         atr = volatility.get("atr", current_price * 0.02)
-        suggested_stop_loss = trading_levels.get("suggested_stop_loss", current_price - 2 * atr)
-        suggested_take_profit = trading_levels.get("suggested_take_profit", current_price + 3 * atr)
-        risk_reward_ratio = trading_levels.get("risk_reward_ratio", 1.5)
-        
-        # Price bounds (still enforce max 10% deviation)
+        volatility_pct = volatility.get("pct", 2.0)
+
+        # Minimum stop distance: max(1.5x ATR, support - 1x ATR below support)
+        # This ensures the stop sits below the noise floor
+        min_stop_distance = 1.5 * atr
+        support_based_stop = support - atr  # 1x ATR below support level
+
+        # Use the wider of: ATR-based or support-based stop
+        suggested_stop_loss = trading_levels.get(
+            "suggested_stop_loss",
+            min(current_price - min_stop_distance, support_based_stop)
+        )
+
+        # Ensure stop is always at least 1.5x ATR from current price
+        # (prevents tight stops in high-vol environments)
+        if current_price - suggested_stop_loss < min_stop_distance:
+            suggested_stop_loss = current_price - min_stop_distance
+
+        # Take profit: target at least 2x the risk (risk = entry - stop)
+        risk = current_price - suggested_stop_loss
+        min_reward = 2.0 * risk  # Minimum 2:1 reward-to-risk
+        resistance_based_target = resistance + atr  # 1x ATR above resistance
+
+        suggested_take_profit = trading_levels.get(
+            "suggested_take_profit",
+            max(current_price + min_reward, resistance_based_target)
+        )
+
+        # Calculate actual risk-reward ratio
+        if risk > 0:
+            reward = suggested_take_profit - current_price
+            risk_reward_ratio = round(reward / risk, 2)
+        else:
+            risk_reward_ratio = 1.5
+
+        # Price bounds (enforce max deviation, scaled to volatility)
+        # High vol stocks need wider bounds than low vol
+        max_deviation = max(0.10, 3 * volatility_pct / 100)  # At least 10%, or 3x ATR%
         if current_price > 0:
-            price_lower_bound = round(max(suggested_stop_loss, current_price * 0.90), 6)
-            price_upper_bound = round(min(suggested_take_profit, current_price * 1.10), 6)
+            price_lower_bound = round(max(suggested_stop_loss, current_price * (1 - max_deviation)), 6)
+            price_upper_bound = round(min(suggested_take_profit, current_price * (1 + max_deviation)), 6)
             entry_range_low = round(current_price * 0.98, 6)
             entry_range_high = round(current_price * 1.02, 6)
         else:
@@ -299,17 +337,18 @@ Provide professional, detailed analysis like a Wall Street analyst report.
 
 📐 TECHNICAL LEVELS (Pre-calculated from chart data):
 - Support: ${support} | Resistance: ${resistance} | Pivot: ${pivot}
-- ATR (14-day): ${atr:.4f} ({volatility.get('pct', 0)}% volatility)
-- Suggested Stop Loss: ${suggested_stop_loss:.4f} (based on 2x ATR below support)
-- Suggested Take Profit: ${suggested_take_profit:.4f} (based on 3x ATR above resistance)
-- Risk/Reward Ratio: {risk_reward_ratio}
+- ATR (14-day): ${atr:.4f} ({volatility_pct}% daily volatility)
+- Suggested Stop Loss: ${suggested_stop_loss:.4f} (1.5x ATR below entry OR 1x ATR below support, whichever is wider)
+- Suggested Take Profit: ${suggested_take_profit:.4f} (minimum 2:1 reward-to-risk OR 1x ATR above resistance)
+- Risk/Reward Ratio: {risk_reward_ratio}:1
 
-⚠️ CRITICAL PRICE RULES:
+⚠️ CRITICAL STOP LOSS RULES:
 1. Current price: ${current_price}
-2. Your stop_loss MUST be near ${suggested_stop_loss:.4f} (range: ${price_lower_bound:.4f} ~ ${current_price})
-3. Your take_profit MUST be near ${suggested_take_profit:.4f} (range: ${current_price} ~ ${price_upper_bound:.4f})
-4. Entry price: ${entry_range_low:.4f} ~ ${entry_range_high:.4f}
-5. These levels are based on ATR and support/resistance analysis - use them as reference!
+2. ATR = ${atr:.4f} which is {volatility_pct}% of price. A stop tighter than 1x ATR ({atr:.4f}) WILL get triggered by normal price noise.
+3. Your stop_loss MUST be at least 1.5x ATR (${min_stop_distance:.4f}) away from entry. Range: ${price_lower_bound:.4f} ~ ${current_price}
+4. Your take_profit should deliver at least 2:1 reward-to-risk. Range: ${current_price} ~ ${price_upper_bound:.4f}
+5. Entry price: ${entry_range_low:.4f} ~ ${entry_range_high:.4f}
+6. If volatility is HIGH ({volatility_pct}%), widen stops — do NOT use tight percentage-based stops that ignore ATR.
 
 📊 YOUR ANALYSIS MUST INCLUDE:
 1. **Technical Analysis**: Interpret the indicators in context. RSI < 30 means oversold but in a downtrend this signals bearish continuation, NOT a buy. Distinguish between oversold-in-uptrend (potential bounce) vs oversold-in-downtrend (falling knife). Explain support/resistance levels.
@@ -592,7 +631,7 @@ Provide your analysis now. Remember: all prices must be within 10% of ${current_
             logger.info(f"LLM call completed in {llm_time}ms")
             
             # Phase 4: Validate and constrain output
-            analysis = self._validate_and_constrain(analysis, current_price)
+            analysis = self._validate_and_constrain(analysis, current_price, data.get("indicators"))
             
             # Build final result
             total_time = int((time.time() - start_time) * 1000)
@@ -652,33 +691,51 @@ Provide your analysis now. Remember: all prices must be within 10% of ${current_
         
         return result
     
-    def _validate_and_constrain(self, analysis: Dict, current_price: float) -> Dict:
+    def _validate_and_constrain(self, analysis: Dict, current_price: float,
+                                indicators: Dict = None) -> Dict:
         """
         Validate LLM output and constrain prices to reasonable ranges.
-        This prevents absurd recommendations like "BTC at 95000, buy at 75000".
+        Uses ATR to set sensible bounds instead of hard percentages.
         """
         if not current_price or current_price <= 0:
             return analysis
-        
-        # Price bounds
-        min_price = current_price * 0.90
-        max_price = current_price * 1.10
-        
+
+        # Get ATR for volatility-aware bounds
+        vol = (indicators or {}).get("volatility", {})
+        atr = vol.get("atr", current_price * 0.02)
+        vol_pct = vol.get("pct", 2.0)
+
+        # Dynamic bounds: 3x ATR% or 10%, whichever is wider
+        max_deviation = max(0.10, 3 * vol_pct / 100)
+        min_price = current_price * (1 - max_deviation)
+        max_price = current_price * (1 + max_deviation)
+
         # Constrain entry price
         entry = analysis.get("entry_price", current_price)
         if entry and (entry < min_price or entry > max_price):
             logger.warning(f"Entry price {entry} out of bounds, constraining to current price {current_price}")
             analysis["entry_price"] = round(current_price, 6)
-        
-        # Constrain stop loss
-        stop_loss = analysis.get("stop_loss", current_price * 0.95)
-        if stop_loss and (stop_loss < min_price or stop_loss > current_price):
-            analysis["stop_loss"] = round(current_price * 0.95, 6)
-        
-        # Constrain take profit
-        take_profit = analysis.get("take_profit", current_price * 1.05)
-        if take_profit and (take_profit < current_price or take_profit > max_price):
-            analysis["take_profit"] = round(current_price * 1.05, 6)
+
+        # Constrain stop loss — fallback uses 1.5x ATR, NOT a flat 5%
+        stop_loss = analysis.get("stop_loss", current_price - 1.5 * atr)
+        if stop_loss and (stop_loss < min_price or stop_loss >= current_price):
+            analysis["stop_loss"] = round(current_price - 1.5 * atr, 6)
+        # Warn if stop is tighter than 1x ATR (will get wicked out)
+        elif stop_loss and (current_price - stop_loss) < atr:
+            logger.warning(
+                f"Stop loss {stop_loss} is tighter than 1x ATR ({atr:.4f}), "
+                f"widening to 1.5x ATR"
+            )
+            analysis["stop_loss"] = round(current_price - 1.5 * atr, 6)
+
+        # Constrain take profit — minimum 2:1 R:R
+        stop_loss_final = analysis.get("stop_loss", current_price - 1.5 * atr)
+        risk = current_price - stop_loss_final
+        min_take_profit = current_price + 2 * risk  # 2:1 minimum
+
+        take_profit = analysis.get("take_profit", min_take_profit)
+        if take_profit and (take_profit <= current_price or take_profit > max_price):
+            analysis["take_profit"] = round(min(min_take_profit, max_price), 6)
         
         # Constrain confidence
         confidence = analysis.get("confidence", 50)
