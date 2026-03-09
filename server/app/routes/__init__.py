@@ -25,7 +25,8 @@ def register_routes(app: Flask):
     from app.routes.community import community_bp
     from app.routes.fast_analysis import fast_analysis_bp
     from app.routes.billing import billing_bp
-    
+    from app.routes.indian_broker import indian_broker_bp
+
     app.register_blueprint(health_bp)
     app.register_blueprint(auth_bp, url_prefix='/api/auth')   # Auth routes
     app.register_blueprint(user_bp, url_prefix='/api/users')  # User management
@@ -45,3 +46,4 @@ def register_routes(app: Flask):
     app.register_blueprint(community_bp, url_prefix='/api/community')
     app.register_blueprint(fast_analysis_bp, url_prefix='/api/fast-analysis')
     app.register_blueprint(billing_bp, url_prefix='/api/billing')
+    app.register_blueprint(indian_broker_bp)  # prefix already in blueprint

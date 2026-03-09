@@ -623,7 +623,24 @@ INSERT INTO ml_market_symbols (market, symbol, name, exchange, currency, is_acti
 ('IndianStock', 'ITC.NS', 'ITC Ltd.', 'NSE', 'INR', 1, 1, 94),
 ('IndianStock', 'SBIN.NS', 'State Bank of India', 'NSE', 'INR', 1, 1, 93),
 ('IndianStock', 'BHARTIARTL.NS', 'Bharti Airtel Ltd.', 'NSE', 'INR', 1, 1, 92),
-('IndianStock', 'KOTAKBANK.NS', 'Kotak Mahindra Bank Ltd.', 'NSE', 'INR', 1, 1, 91)
+('IndianStock', 'KOTAKBANK.NS', 'Kotak Mahindra Bank Ltd.', 'NSE', 'INR', 1, 1, 91),
+-- IndianStock Indices
+('IndianStock', '^NSEI', 'NIFTY 50 Index', 'NSE_INDEX', 'INR', 1, 1, 110),
+('IndianStock', '^NSEBANK', 'NIFTY Bank Index', 'NSE_INDEX', 'INR', 1, 1, 109),
+('IndianStock', '^BSESN', 'BSE SENSEX Index', 'BSE_INDEX', 'INR', 1, 1, 108),
+('IndianStock', '^CNXFIN', 'NIFTY Financial Services Index', 'NSE_INDEX', 'INR', 1, 1, 107),
+('IndianStock', '^CNXMID', 'NIFTY Midcap Select Index', 'NSE_INDEX', 'INR', 1, 1, 106),
+-- IndianStock additional popular equities
+('IndianStock', 'BAJFINANCE.NS', 'Bajaj Finance Ltd.', 'NSE', 'INR', 1, 1, 90),
+('IndianStock', 'LT.NS', 'Larsen & Toubro Ltd.', 'NSE', 'INR', 1, 1, 89),
+('IndianStock', 'HCLTECH.NS', 'HCL Technologies Ltd.', 'NSE', 'INR', 1, 1, 88),
+('IndianStock', 'WIPRO.NS', 'Wipro Ltd.', 'NSE', 'INR', 1, 1, 87),
+('IndianStock', 'MARUTI.NS', 'Maruti Suzuki India Ltd.', 'NSE', 'INR', 1, 1, 86),
+('IndianStock', 'TATAMOTORS.NS', 'Tata Motors Ltd.', 'NSE', 'INR', 1, 1, 85),
+('IndianStock', 'SUNPHARMA.NS', 'Sun Pharmaceutical Industries Ltd.', 'NSE', 'INR', 1, 1, 84),
+('IndianStock', 'ADANIENT.NS', 'Adani Enterprises Ltd.', 'NSE', 'INR', 1, 1, 83),
+('IndianStock', 'TATASTEEL.NS', 'Tata Steel Ltd.', 'NSE', 'INR', 1, 1, 82),
+('IndianStock', 'AXISBANK.NS', 'Axis Bank Ltd.', 'NSE', 'INR', 1, 1, 81)
 ON CONFLICT (market, symbol) DO NOTHING;
 
 -- =============================================================================

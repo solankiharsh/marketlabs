@@ -251,6 +251,14 @@ class ZerodhaClient(BaseRestClient):
 
     # ========== Account ==========
 
+    def ping(self) -> bool:
+        """Connectivity check — fetches profile to verify token validity."""
+        try:
+            profile = self.get_profile()
+            return bool(profile)
+        except Exception:
+            return False
+
     def get_margins(self) -> Dict[str, Any]:
         """Get account margins."""
         return self._kite_request("GET", "/user/margins")

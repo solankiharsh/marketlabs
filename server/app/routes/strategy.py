@@ -667,18 +667,23 @@ def test_connection():
         
         api_key = exchange_config.get('api_key', '')
         secret_key = exchange_config.get('secret_key', '')
-        
-        logger.info(f"Testing connection: exchange_id={exchange_config.get('exchange_id')}")
-        logger.info(f"API Key: {api_key[:5]}... (len={len(api_key)})")
-        logger.info(f"Secret Key: {secret_key[:5]}... (len={len(secret_key)})")
-        
-        if api_key.strip() != api_key:
-            logger.warning("API key contains leading/trailing whitespace")
-        if secret_key.strip() != secret_key:
-            logger.warning("Secret key contains leading/trailing whitespace")
-            
-        if not api_key or not secret_key:
-            return jsonify({'code': 0, 'msg': 'Please provide API key and secret key', 'data': None})
+        exchange_id = (exchange_config.get('exchange_id') or '').strip().lower()
+
+        logger.info(f"Testing connection: exchange_id={exchange_id}")
+
+        # Indian brokers use different credential fields (no secret_key)
+        indian_brokers = ('zerodha', 'angelone')
+        if exchange_id not in indian_brokers:
+            logger.info(f"API Key: {api_key[:5]}... (len={len(api_key)})")
+            logger.info(f"Secret Key: {secret_key[:5]}... (len={len(secret_key)})")
+
+            if api_key.strip() != api_key:
+                logger.warning("API key contains leading/trailing whitespace")
+            if secret_key.strip() != secret_key:
+                logger.warning("Secret key contains leading/trailing whitespace")
+
+            if not api_key or not secret_key:
+                return jsonify({'code': 0, 'msg': 'Please provide API key and secret key', 'data': None})
         
         result = get_strategy_service().test_exchange_connection(exchange_config)
         

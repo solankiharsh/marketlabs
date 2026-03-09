@@ -283,6 +283,8 @@ class StrategyService:
                 from app.services.live_trading.gate import GateSpotClient, GateUsdtFuturesClient
                 from app.services.live_trading.bitfinex import BitfinexClient, BitfinexDerivativesClient
                 from app.services.live_trading.deepcoin import DeepcoinClient
+                from app.services.live_trading.zerodha import ZerodhaClient
+                from app.services.live_trading.angelone import AngelOneClient
 
                 resolved = resolve_exchange_config(exchange_config or {})
                 safe_cfg = safe_exchange_config_for_log(resolved)
@@ -353,6 +355,11 @@ class StrategyService:
                         priv_data = client.get_wallets()
                     elif isinstance(client, DeepcoinClient):
                         priv_data = client.get_balance()
+                    elif isinstance(client, ZerodhaClient):
+                        priv_data = client.get_profile()
+                    elif isinstance(client, AngelOneClient):
+                        client.login()
+                        priv_data = client.get_profile()
                 except Exception as e:
                     msg = str(e)
                     # Add actionable hints for the most common Binance auth error.

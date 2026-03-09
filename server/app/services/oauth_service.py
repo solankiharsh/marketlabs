@@ -32,11 +32,12 @@ class OAuthService:
     
     def _load_config(self):
         """Load OAuth configuration from environment variables"""
-        # Google OAuth
-        self.google_client_id = os.getenv('GOOGLE_CLIENT_ID', '')
-        self.google_client_secret = os.getenv('GOOGLE_CLIENT_SECRET', '')
-        self.google_redirect_uri = os.getenv('GOOGLE_REDIRECT_URI', '')
-        self.google_enabled = bool(self.google_client_id and self.google_client_secret)
+        # Google OAuth (redirect_uri must match Google Console exactly — no trailing slash)
+        self.google_client_id = (os.getenv('GOOGLE_CLIENT_ID', '') or '').strip()
+        self.google_client_secret = (os.getenv('GOOGLE_CLIENT_SECRET', '') or '').strip()
+        raw_redirect = (os.getenv('GOOGLE_REDIRECT_URI', '') or '').strip()
+        self.google_redirect_uri = raw_redirect.rstrip('/') if raw_redirect else ''
+        self.google_enabled = bool(self.google_client_id and self.google_client_secret and self.google_redirect_uri)
         
         # GitHub OAuth
         self.github_client_id = os.getenv('GITHUB_CLIENT_ID', '')
@@ -45,7 +46,7 @@ class OAuthService:
         self.github_enabled = bool(self.github_client_id and self.github_client_secret)
         
         # Frontend URL for redirect after OAuth
-        self.frontend_url = os.getenv('FRONTEND_URL', 'http://localhost:8080')
+        self.frontend_url = os.getenv('FRONTEND_URL', 'http://localhost:8000')
         
         # State storage (in-memory for simplicity, could use Redis in production)
         self._states = {}
@@ -66,6 +67,9 @@ class OAuthService:
         
         state = state or secrets.token_urlsafe(32)
         self._states[state] = {'provider': 'google', 'created_at': datetime.now()}
+        
+        # Log so you can copy this exact value into Google Console → Authorized redirect URIs
+        logger.info(f"Google OAuth redirect_uri sent to Google: {self.google_redirect_uri!r}")
         
         params = {
             'client_id': self.google_client_id,
