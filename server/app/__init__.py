@@ -302,9 +302,9 @@ def create_app(config_name='default'):
 
 
 def _serve_frontend(app):
-    """Serve the Vue SPA from web/dist/ if it exists (production deploy)."""
+    """Serve the Vue SPA from dist/ if it exists (production deploy)."""
     import os
-    from flask import send_from_directory
+    from flask import send_from_directory, make_response
 
     # Look for dist/ relative to server/ dir (../web/dist) or as a sibling copy (dist/)
     server_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -326,7 +326,18 @@ def _serve_frontend(app):
         # If the path matches a real file in dist/, serve it
         full = os.path.join(dist_dir, path)
         if path and os.path.isfile(full):
-            return send_from_directory(dist_dir, path)
-        # Otherwise serve index.html (SPA client-side routing)
-        return send_from_directory(dist_dir, 'index.html')
+            resp = make_response(send_from_directory(dist_dir, path))
+            # Hashed assets (js/css with content hash) can be cached forever;
+            # everything else gets a short cache so deploys take effect quickly.
+            if '/js/' in path or '/css/' in path:
+                resp.headers['Cache-Control'] = 'public, max-age=31536000, immutable'
+            else:
+                resp.headers['Cache-Control'] = 'public, max-age=3600'
+            return resp
+        # SPA fallback — index.html must never be cached aggressively
+        resp = make_response(send_from_directory(dist_dir, 'index.html'))
+        resp.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
+        resp.headers['Pragma'] = 'no-cache'
+        resp.headers['Expires'] = '0'
+        return resp
 

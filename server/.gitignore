@@ -9,7 +9,7 @@ venv/
 ENV/
 build/
 develop-eggs/
-dist/
+# dist/ is intentionally tracked — pre-built frontend served by Flask
 downloads/
 eggs/
 .eggs/
