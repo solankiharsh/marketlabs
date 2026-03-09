@@ -177,13 +177,7 @@ export default {
         }
 
         // Format time using 24-hour clock
-        const locale = this.$i18n.locale || 'zh-CN'
-        const localeMap = {
-          'zh-CN': 'zh-CN',
-          'zh-TW': 'zh-TW',
-          'en-US': 'en-US'
-        }
-        return date.toLocaleString(localeMap[locale] || 'zh-CN', {
+        return date.toLocaleString('en-US', {
           year: 'numeric',
           month: '2-digit',
           day: '2-digit',

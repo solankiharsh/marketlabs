@@ -537,7 +537,7 @@ export default {
       return this.navTheme === 'dark' || this.navTheme === 'realdark'
     },
     isZhLocale () {
-      return this.$i18n.locale === 'zh-CN'
+      return false
     },
     currentHeatmap () {
       return this.marketData.heatmap[this.heatmapType] || []
@@ -773,7 +773,7 @@ export default {
       this.analysisError = null
 
       const [market, symbol] = this.selectedSymbol.split(':')
-      const language = this.$store.getters.lang || 'zh-CN'
+      const language = this.$store.getters.lang || 'en-US'
 
       try {
         const res = await fastAnalyze({
@@ -864,12 +864,12 @@ export default {
     formatTime (timestamp) {
       if (!timestamp) return '-'
       const date = new Date(timestamp * 1000)
-      return date.toLocaleString('zh-CN')
+      return date.toLocaleString('en-US')
     },
     formatIsoTime (isoString) {
       if (!isoString) return '-'
       const date = new Date(isoString)
-      return date.toLocaleString('zh-CN')
+      return date.toLocaleString('en-US')
     },
     getStatusColor (status) {
       const colors = {

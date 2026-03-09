@@ -76,7 +76,7 @@ export default {
           key: 'created_at',
           width: 180,
           customRender: (text) => {
-            return new Date(text * 1000).toLocaleString('zh-CN')
+            return new Date(text * 1000).toLocaleString('en-US')
           }
         },
         {

@@ -4,31 +4,13 @@ import { Icon, Menu, Dropdown } from 'ant-design-vue'
 import { i18nRender } from '@/locales'
 import i18nMixin from '@/store/i18n-mixin'
 
-const locales = ['en-US', 'ja-JP', 'ko-KR', 'vi-VN', 'th-TH', 'ar-SA', 'fr-FR', 'de-DE', 'zh-TW', 'zh-CN']
+const locales = ['en-US']
 const languageLabels = {
-  'zh-CN': '简体中文',
-  'zh-TW': '繁體中文',
-  'en-US': 'English',
-  'ja-JP': '日本語',
-  'ko-KR': '한국어',
-  'vi-VN': 'Tiếng Việt',
-  'th-TH': 'ไทย',
-  'ar-SA': 'العربية',
-  'fr-FR': 'Français',
-  'de-DE': 'Deutsch'
+  'en-US': 'English'
 }
 // eslint-disable-next-line
 const languageIcons = {
-  'zh-CN': '🇨🇳',
-  'zh-TW': 'sg',
-  'en-US': '🇺🇸',
-  'ja-JP': '🇯🇵',
-  'ko-KR': '🇰🇷',
-  'vi-VN': '🇻🇳',
-  'th-TH': '🇹🇭',
-  'ar-SA': '🇸🇦',
-  'fr-FR': '🇫🇷',
-  'de-DE': '🇩🇪'
+  'en-US': '🇺🇸'
 }
 
 const SelectLang = {

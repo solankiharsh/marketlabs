@@ -201,7 +201,7 @@ export default {
       this.showAIResult = true
       this.aiResult = ''
       try {
-        const lang = (this.$i18n && this.$i18n.locale) ? this.$i18n.locale : 'zh-CN'
+        const lang = 'en-US'
         const res = await request({
           url: '/api/indicator/backtest/aiAnalyze',
           method: 'post',

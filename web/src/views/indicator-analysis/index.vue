@@ -1841,7 +1841,7 @@ export default {
         return proxy.$t('dashboard.indicator.expiry.noExpiry')
       }
       const currentTime = Math.floor(Date.now() / 1000)
-      const date = new Date(endTime * 1000).toLocaleString(proxy.$i18n.locale === 'zh-CN' ? 'zh-CN' : proxy.$i18n.locale === 'zh-TW' ? 'zh-TW' : 'en-US')
+      const date = new Date(endTime * 1000).toLocaleString('en-US')
       if (endTime < currentTime) {
         return proxy.$t('dashboard.indicator.expiry.expired', { date })
       }

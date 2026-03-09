@@ -28,15 +28,8 @@ const loadedLanguages = [defaultLang]
 function setI18nLanguage (lang) {
   i18n.locale = lang
   const html = document.documentElement
-  const isRtl = /^ar/i.test(lang)
   if (html) {
-    // request.headers['Accept-Language'] = lang
     html.setAttribute('lang', lang)
-    html.setAttribute('dir', isRtl ? 'rtl' : 'ltr')
-  }
-  if (document.body) {
-    document.body.setAttribute('dir', isRtl ? 'rtl' : 'ltr')
-    document.body.classList.toggle('rtl', isRtl)
   }
   return lang
 }
