@@ -81,6 +81,13 @@ export const asyncRouterMap = [
         component: () => import('@/views/billing'),
         meta: { title: 'menu.billing', keepAlive: false, icon: 'wallet', permission: ['dashboard'] }
       },
+      // About
+      {
+        path: '/about',
+        name: 'About',
+        component: () => import('@/views/about'),
+        meta: { title: 'menu.about', keepAlive: false, icon: 'info-circle', permission: ['dashboard'] }
+      },
       // System Settings (admin only) - placed last
       {
         path: '/settings',
@@ -177,6 +184,13 @@ export const constantRouterMap = [
         component: () => import(/* webpackChunkName: "user" */ '@/views/user/Login')
       }
     ]
+  },
+
+  {
+    path: '/about',
+    name: 'AboutPublic',
+    component: () => import('@/views/about'),
+    hidden: true
   },
 
   {

@@ -3110,6 +3110,8 @@ const locale = {
   'trading-assistant.liveDisclaimer.blockTitle': 'Please accept the disclaimer first',
   'trading-assistant.liveDisclaimer.blockDesc': 'You must accept the disclaimer to configure live trading connection and order settings.',
 
+  'menu.about': 'About',
+
   // Billing / Membership
   'menu.billing': 'Membership',
   'billing.title': 'Membership / Credits',

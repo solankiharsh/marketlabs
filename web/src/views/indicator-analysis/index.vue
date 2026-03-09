@@ -88,18 +88,55 @@
           </div>
         </div>
 
-        <kline-chart
-          ref="klineChart"
-          :symbol="currentSymbol"
-          :market="currentMarket"
-          :timeframe="timeframe"
-          :theme="chartTheme"
-          :activeIndicators="activeIndicators"
-          :realtimeEnabled="realtimeEnabled"
-          @price-change="handlePriceChange"
-          @retry="handleChartRetry"
-          @indicator-toggle="handleIndicatorToggle"
-        />
+        <!-- Chart area wrapper: tabs + chart view -->
+        <div class="chart-area-wrapper">
+          <div class="chart-view-tabs">
+            <span
+              class="chart-view-tab"
+              :class="{ active: chartViewMode === 'kline' }"
+              @click="chartViewMode = 'kline'"
+            >
+              <a-icon type="line-chart" /> MarketLabs
+            </span>
+            <span
+              class="chart-view-tab"
+              :class="{ active: chartViewMode === 'tradingview' }"
+              @click="chartViewMode = 'tradingview'"
+            >
+              <a-icon type="stock" /> TradingView
+            </span>
+          </div>
+
+          <kline-chart
+            v-show="chartViewMode === 'kline'"
+            ref="klineChart"
+            :symbol="currentSymbol"
+            :market="currentMarket"
+            :timeframe="timeframe"
+            :theme="chartTheme"
+            :activeIndicators="activeIndicators"
+            :realtimeEnabled="realtimeEnabled"
+            @price-change="handlePriceChange"
+            @retry="handleChartRetry"
+            @indicator-toggle="handleIndicatorToggle"
+          />
+
+          <div v-show="chartViewMode === 'tradingview'" class="tradingview-container">
+            <iframe
+              v-if="tradingViewSymbol"
+              :key="tradingViewSymbol + '-' + chartTheme"
+              :src="tradingViewEmbedUrl"
+              class="tradingview-iframe"
+              frameborder="0"
+              allowtransparency="true"
+              allowfullscreen
+            ></iframe>
+            <div v-else class="tradingview-empty">
+              <a-icon type="stock" style="font-size: 48px; margin-bottom: 12px;" />
+              <p>Select a symbol to view TradingView chart</p>
+            </div>
+          </div>
+        </div>
 
         <div class="chart-right">
           <div class="indicators-panel">
@@ -690,6 +727,57 @@ export default {
     // User info (local single-user mode: default userId=1, prevents page from failing to load watchlist/indicators when not logged in)
     const userId = ref(1)
     const loadingUserInfo = ref(false)
+
+    // Chart view mode: 'kline' or 'tradingview'
+    const chartViewMode = ref('kline')
+
+    // Map market + symbol to TradingView symbol format
+    const tradingViewSymbol = computed(() => {
+      if (!currentSymbol.value || !currentMarket.value) return ''
+      const market = currentMarket.value
+      let symbol = currentSymbol.value
+
+      // Clean up symbol based on market
+      if (market === 'Crypto') {
+        // BTC/USDT -> BTCUSDT
+        symbol = symbol.replace('/', '')
+        return `BINANCE:${symbol}`
+      } else if (market === 'IndianStock') {
+        // TCS.NS -> TCS, RELIANCE.NS -> RELIANCE, NIFTY50 -> NIFTY
+        symbol = symbol.replace(/\.(NS|BO|NSE|BSE)$/i, '')
+        return `NSE:${symbol}`
+      } else if (market === 'Forex') {
+        // EUR/USD -> EURUSD
+        symbol = symbol.replace('/', '')
+        return `FX:${symbol}`
+      } else if (market === 'Futures') {
+        return `CME:${symbol}`
+      } else {
+        // USStock: AAPL stays AAPL
+        return `NASDAQ:${symbol}`
+      }
+    })
+
+    // TradingView embed URL using their embeddable mini chart / symbol overview
+    const tradingViewEmbedUrl = computed(() => {
+      if (!tradingViewSymbol.value) return ''
+      const theme = (proxy && proxy.$store && proxy.$store.state.app.theme === 'dark') || (proxy && proxy.$store && proxy.$store.state.app.theme === 'realdark') ? 'dark' : 'light'
+      const sym = encodeURIComponent(tradingViewSymbol.value)
+      return 'https://s.tradingview.com/widgetembed/?hideideas=1&overrides=%7B%7D&enabled_features=%5B%5D&disabled_features=%5B%5D&locale=en' +
+        '&symbol=' + sym +
+        '&interval=15' +
+        '&theme=' + theme +
+        '&style=1' +
+        '&timezone=exchange' +
+        '&withdateranges=1' +
+        '&hide_side_toolbar=0' +
+        '&allow_symbol_change=1' +
+        '&save_image=1' +
+        '&studies=%5B%5D' +
+        '&utm_source=marketlabs' +
+        '&utm_medium=widget' +
+        '&utm_campaign=chart'
+    })
 
     // Search related
     const searchSymbol = ref(undefined)
@@ -2061,6 +2149,10 @@ getMarketColor,
       selectedSymbol: currentSymbol,
       selectedMarket: currentMarket,
       selectedTimeframe: timeframe,
+      // Chart view toggle
+      chartViewMode,
+      tradingViewSymbol,
+      tradingViewEmbedUrl,
       // Mobile related
       isMobile,
       // Add stock modal related
@@ -2300,6 +2392,102 @@ getMarketColor,
   min-height: 500px !important; /* Minimum height guarantee */
   max-height: 80vh !important; /* Limit maximum height */
   flex-shrink: 0; /* Prevent being compressed */
+  flex-wrap: wrap;
+}
+
+/* Chart area wrapper - takes same flex space as kline-chart */
+.chart-area-wrapper {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden;
+}
+/* KlineChart fills full width/height of wrapper (overrides KlineChart's own 70% !important) */
+.chart-area-wrapper /deep/ .chart-left {
+  width: 100% !important;
+  flex: 1 1 auto !important;
+  min-height: 0;
+}
+
+/* Chart view toggle tabs */
+.chart-view-tabs {
+  display: inline-flex;
+  gap: 2px;
+  padding: 3px;
+  background: #f0f0f0;
+  border-radius: 6px;
+  flex-shrink: 0;
+  margin: 4px 8px;
+}
+.chart-view-tab {
+  padding: 3px 10px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 500;
+  cursor: pointer;
+  color: #888;
+  transition: all 0.15s;
+  user-select: none;
+  white-space: nowrap;
+  &:hover {
+    color: #555;
+  }
+  &.active {
+    background: #13C2C2;
+    color: #fff;
+    box-shadow: 0 1px 2px rgba(0,0,0,0.1);
+  }
+  i {
+    margin-right: 3px;
+  }
+}
+
+/* TradingView widget container */
+.tradingview-container {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+}
+.tradingview-iframe {
+  width: 100%;
+  height: 100%;
+  border: none;
+  display: block;
+}
+.tradingview-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+  color: #999;
+  font-size: 14px;
+  background: #fafafa;
+}
+
+/* Dark theme overrides for chart view tabs */
+.theme-dark {
+  .chart-view-tabs {
+    background: #252535;
+  }
+  .chart-view-tab {
+    color: #aaa;
+    &:hover {
+      color: #ddd;
+    }
+    &.active {
+      background: #13C2C2;
+      color: #fff;
+    }
+  }
+  .tradingview-empty {
+    background: #141422;
+    color: #666;
+  }
 }
 
 /* Chart related styles have been migrated to KlineChart component */
@@ -2770,6 +2958,24 @@ getMarketColor,
         font-weight: 500;
       }
     }
+  }
+
+  /* Chart area wrapper on mobile */
+  .chart-area-wrapper {
+    order: 1 !important;
+    width: 100% !important;
+    flex: 0 0 auto !important;
+    height: auto !important;
+    min-height: 0 !important;
+  }
+
+  .chart-view-tabs {
+    margin: 8px 12px !important;
+  }
+
+  .tradingview-container {
+    height: 350px !important;
+    min-height: 350px !important;
   }
 
   /* K-line chart on top */

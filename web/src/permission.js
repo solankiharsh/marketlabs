@@ -20,7 +20,7 @@ NProgress.configure({
   showSpinner: false
 }) // NProgress Configuration
 
-const allowList = ['login'] // no redirect allowList
+const allowList = ['login', 'About', 'AboutPublic'] // no redirect allowList
 const loginRoutePath = '/user/login'
 const defaultRoutePath = '/dashboard'
 

@@ -1731,6 +1731,61 @@ export default {
   }
 }
 
+@media (max-width: 576px) {
+  .ai-analysis-container {
+    height: auto;
+    min-height: calc(100vh - 56px);
+  }
+
+  .top-index-bar {
+    padding: 6px;
+    gap: 4px;
+
+    .indicator-box {
+      min-width: 40px;
+      padding: 2px 4px;
+      font-size: 10px;
+    }
+  }
+
+  .main-body {
+    padding: 8px;
+    gap: 8px;
+  }
+
+  .left-panel {
+    flex-direction: column !important;
+    gap: 8px;
+
+    .heatmap-box {
+      .box-header {
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+      }
+    }
+
+    .calendar-box {
+      max-height: 150px;
+    }
+  }
+
+  .right-panel {
+    .analysis-toolbar {
+      padding: 8px;
+      gap: 8px;
+
+      .symbol-selector {
+        width: 100% !important;
+      }
+
+      .analyze-button, .history-button {
+        font-size: 13px;
+        height: 36px;
+      }
+    }
+  }
+}
+
 /* Dark Theme */
 .ai-analysis-container.theme-dark {
   background: #131722;
