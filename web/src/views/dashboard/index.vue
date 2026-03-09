@@ -1635,10 +1635,13 @@ export default {
     .negative { color: @danger; }
 
     &.kpi-primary {
+      background: linear-gradient(135deg, #0f766e, #059669);
+      border-color: #047857;
       .kpi-icon { background: rgba(0, 212, 170, 0.2); color: #fff; }
       .kpi-label { color: rgba(255,255,255,0.8); }
       .kpi-value .currency, .kpi-value .amount, .kpi-value .unit { color: #fff; }
-      .kpi-sub { color: rgba(255,255,255,0.7); }
+      .kpi-sub { color: rgba(255,255,255,0.7); .positive { color: #a7f3d0; } .negative { color: #fca5a5; } }
+      .kpi-glass { background: linear-gradient(135deg, rgba(255,255,255,0.1) 0%, transparent 50%); }
       &::before { background: @accent; }
     }
     &.kpi-win-rate .kpi-ring {

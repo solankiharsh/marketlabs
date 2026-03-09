@@ -373,7 +373,7 @@ export default {
       return this.navTheme === 'dark' || this.navTheme === 'realdark'
     },
     progressPercent () {
-      return this.progress
+      return Math.floor(this.progress)
     },
     // Compute current step from progress
     step () {
