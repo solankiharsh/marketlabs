@@ -75,14 +75,15 @@ class FastAnalysisService:
             
             current_price = closes[-1]
             
-            # RSI interpretation
+            # RSI interpretation (context-aware: oversold in a downtrend ≠ bullish)
             rsi = raw_indicators.get("RSI", 50)
             if rsi < 30:
                 rsi_signal = "oversold"
-                rsi_action = "potential_buy"
+                # Don't default to "potential_buy" — oversold in a downtrend is bearish continuation
+                rsi_action = "watch_for_reversal"
             elif rsi > 70:
                 rsi_signal = "overbought"
-                rsi_action = "potential_sell"
+                rsi_action = "watch_for_pullback"
             else:
                 rsi_signal = "neutral"
                 rsi_action = "hold"
@@ -118,6 +119,19 @@ class FastAnalysisService:
             else:
                 ma_trend = "sideways"
             
+            # Refine RSI action based on MA trend context
+            # Oversold in uptrend = potential bounce; oversold in downtrend = bearish continuation
+            if rsi < 30:
+                if ma_trend in ("uptrend", "strong_uptrend", "sideways"):
+                    rsi_action = "potential_bounce"
+                else:
+                    rsi_action = "bearish_continuation"
+            elif rsi > 70:
+                if ma_trend in ("downtrend", "strong_downtrend", "sideways"):
+                    rsi_action = "potential_pullback"
+                else:
+                    rsi_action = "bullish_momentum"
+
             # Support/Resistance (simple: recent highs/lows)
             recent_highs = [float(k.get("high", 0)) for k in kline_data[-14:] if k.get("high")]
             recent_lows = [float(k.get("low", 0)) for k in kline_data[-14:] if k.get("low")]
@@ -298,9 +312,13 @@ Provide professional, detailed analysis like a Wall Street analyst report.
 5. These levels are based on ATR and support/resistance analysis - use them as reference!
 
 📊 YOUR ANALYSIS MUST INCLUDE:
-1. **Technical Analysis**: Interpret the indicators, explain why support/resistance levels matter
-2. **Fundamental Analysis**: Evaluate valuation, growth if data available
-3. **Sentiment Analysis**: Assess market mood, news impact, macro factors
+1. **Technical Analysis**: Interpret the indicators in context. RSI < 30 means oversold but in a downtrend this signals bearish continuation, NOT a buy. Distinguish between oversold-in-uptrend (potential bounce) vs oversold-in-downtrend (falling knife). Explain support/resistance levels.
+2. **Fundamental Analysis**: MUST evaluate valuation depth:
+   - Is current P/E above or below the stock's historical 5-year average P/E?
+   - Is it trading at a premium or discount to sector/industry peers?
+   - For Indian IT stocks: compare with NIFTY IT index P/E
+   - If P/E data is N/A, explicitly state "valuation data unavailable" rather than skipping
+3. **Sentiment Analysis**: Assess market mood, news impact, macro factors. Note: CBOE VIX measures US market fear — for non-US stocks, explain the indirect impact rather than citing VIX as a direct indicator.
 4. **Risk Assessment**: Explain why the stop loss level is appropriate
 5. **Clear Recommendation**: BUY/SELL/HOLD with entry, stop loss (near suggested), take profit (near suggested)
 
@@ -364,13 +382,22 @@ Output ONLY valid JSON (do NOT include word counts or format hints in your actua
 💼 FUNDAMENTALS:
 - Company: {company.get('name', data['symbol'])}
 - Industry: {company.get('industry', 'N/A')}
+- Sector: {company.get('sector', 'N/A')}
 - P/E Ratio: {fundamental.get('pe_ratio', 'N/A')}
+- Forward P/E: {fundamental.get('forward_pe', 'N/A')}
 - P/B Ratio: {fundamental.get('pb_ratio', 'N/A')}
 - Market Cap: {fundamental.get('market_cap', 'N/A')}
 - 52W High/Low: {fundamental.get('52w_high', 'N/A')} / {fundamental.get('52w_low', 'N/A')}
 - ROE: {fundamental.get('roe', 'N/A')}
+- Dividend Yield: {fundamental.get('dividend_yield', 'N/A')}
+- EPS Growth (YoY): {fundamental.get('eps_growth', 'N/A')}
 
-IMPORTANT: Consider the macro environment (especially DXY, VIX, rates) when making your recommendation.
+📊 VALUATION CONTEXT (you MUST address these):
+- Is the current P/E above or below the historical average for this stock/sector?
+- Is it trading at a premium or discount to industry peers?
+- Where is the stock relative to its 52-week range? (near high = expensive, near low = cheap or distressed)
+
+IMPORTANT: Consider the macro environment contextually. VIX is a US volatility measure — for non-US assets, explain indirect impact only. Do NOT cite VIX > 30 as directly bearish for Indian/crypto/forex assets without explaining the transmission mechanism.
 Provide your analysis now. Remember: all prices must be within 10% of ${current_price}."""
 
         return system_prompt, user_prompt
@@ -394,19 +421,28 @@ Provide your analysis now. Remember: all prices must be within 10% of ${current_
             elif market == 'Forex':
                 lines.append(f"  ⚠️ USD {direction} directly impacts forex trends")
         
-        # VIX Fear Index
+        # VIX (CBOE Volatility Index — measures US S&P 500 implied volatility)
         if 'VIX' in macro:
             vix = macro['VIX']
             vix_value = vix.get('price', 0)
             if vix_value > 30:
                 level = "Extreme fear (>30)"
             elif vix_value > 20:
-                level = "High fear (20-30)"
+                level = "Elevated (20-30)"
             elif vix_value > 15:
                 level = "Normal (15-20)"
             else:
                 level = "Low volatility (<15)"
-            lines.append(f"- {vix.get('name', 'VIX')}: {vix_value:.2f} - {level}")
+            lines.append(f"- CBOE VIX (US): {vix_value:.2f} - {level}")
+            # Add market-specific context for VIX relevance
+            if market == 'IndianStock':
+                lines.append("  Note: VIX is US S&P 500 implied vol; impacts Indian markets indirectly via FII flows and global risk appetite, not a direct indicator for Indian stocks")
+            elif market == 'Crypto':
+                if vix_value > 25:
+                    lines.append("  ⚠️ Elevated US VIX often correlates with crypto risk-off moves")
+            elif market in ('USStock', 'Futures'):
+                if vix_value > 25:
+                    lines.append("  ⚠️ Elevated VIX signals increased hedging demand and potential downside risk")
         
         # US Treasury Yield
         if 'TNX' in macro:
