@@ -1740,7 +1740,8 @@ export default {
         'USStock': 'green',
         'Crypto': 'purple',
         'Forex': 'gold',
-        'Futures': 'cyan'
+        'Futures': 'cyan',
+        'IndianStock': 'volcano'
       }
       return colors[market] || 'default'
     },
@@ -1749,6 +1750,7 @@ export default {
     },
     getCurrencySymbol (market) {
       const dollarMarkets = ['USStock', 'Crypto', 'Forex', 'Futures']
+      if (market === 'IndianStock') return '₹'
       return dollarMarkets.includes(market) ? '$' : '¥'
     },
     formatNumber (num, digits = 2) {

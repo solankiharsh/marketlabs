@@ -84,6 +84,7 @@
                 <a-radio-button value="commodities">{{ $t('globalMarket.commoditiesHeatmap') }}</a-radio-button>
                 <a-radio-button value="sectors">{{ $t('globalMarket.sectorHeatmap') }}</a-radio-button>
                 <a-radio-button value="forex">{{ $t('globalMarket.forexHeatmap') }}</a-radio-button>
+                <a-radio-button value="india">{{ $t('globalMarket.indiaHeatmap') }}</a-radio-button>
               </a-radio-group>
             </div>
             <div class="heatmap-grid">
@@ -488,7 +489,7 @@ export default {
         vix: null,
         dxy: null,
         indices: [],
-        heatmap: { crypto: [], commodities: [], sectors: [], forex: [] },
+        heatmap: { crypto: [], commodities: [], sectors: [], forex: [], india: [] },
         calendar: []
       },
       // Independent loading states - progressive loading
@@ -642,7 +643,8 @@ export default {
             crypto: res.data.crypto || [],
             commodities: res.data.commodities || [],
             sectors: res.data.sectors || [],
-            forex: res.data.forex || []
+            forex: res.data.forex || [],
+            india: res.data.india || []
           }
         }
       } catch (e) {
@@ -735,15 +737,16 @@ export default {
     },
     formatHeatmapPrice (price) {
       if (!price) return ''
-      if (price >= 10000) return '$' + (price / 1000).toFixed(1) + 'K'
-      if (price >= 1000) return '$' + price.toFixed(0)
-      if (price >= 1) return '$' + price.toFixed(2)
-      return '$' + price.toFixed(4)
+      const symbol = this.heatmapType === 'india' ? '₹' : '$'
+      if (price >= 10000) return symbol + (price / 1000).toFixed(1) + 'K'
+      if (price >= 1000) return symbol + price.toFixed(0)
+      if (price >= 1) return symbol + price.toFixed(2)
+      return symbol + price.toFixed(4)
     },
     getHeatmapName (item) {
-      // sectors, commodities, forex all need i18n adaptation
-      if (this.heatmapType === 'sectors' || this.heatmapType === 'commodities' || this.heatmapType === 'forex') {
-        return this.isZhLocale ? (item.name_cn || item.name) : (item.name_en || item.name)
+      // sectors, commodities, forex, india all need i18n adaptation
+      if (this.heatmapType === 'sectors' || this.heatmapType === 'commodities' || this.heatmapType === 'forex' || this.heatmapType === 'india') {
+        return item.name_en || item.name
       }
       return item.name
     },
@@ -755,7 +758,8 @@ export default {
         'USStock': 'green',
         'Crypto': 'purple',
         'Forex': 'gold',
-        'Futures': 'cyan'
+        'Futures': 'cyan',
+        'IndianStock': 'volcano'
       }
       return colors[market] || 'default'
     },

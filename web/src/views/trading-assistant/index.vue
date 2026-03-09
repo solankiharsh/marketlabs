@@ -1311,6 +1311,91 @@
                   <!-- <template v-else-if="currentBrokerId === 'mt4'">...</template> -->
                 </template>
 
+                <!-- ========== Indian Broker Configuration ========== -->
+                <template v-else-if="isIndianMarket">
+                  <a-form-item :label="$t('trading-assistant.form.indianBroker')">
+                    <a-select
+                      v-decorator="['indian_broker_id', {
+                        initialValue: 'zerodha',
+                        rules: [{ required: true, message: $t('trading-assistant.validation.brokerRequired') }]
+                      }]"
+                      :placeholder="$t('trading-assistant.placeholders.selectBroker')"
+                      :getPopupContainer="getModalPopupContainer"
+                      @change="handleIndianBrokerSelectChange">
+                      <a-select-option v-for="broker in indianBrokerOptions" :key="broker.value" :value="broker.value">
+                        {{ broker.displayName }}
+                      </a-select-option>
+                    </a-select>
+                  </a-form-item>
+
+                  <!-- API Key (all Indian brokers need this) -->
+                  <a-form-item :label="$t('trading-assistant.form.apiKey')">
+                    <a-input-password
+                      v-decorator="['api_key', { rules: [{ required: true, message: $t('trading-assistant.validation.apiKeyRequired') }] }]"
+                      :placeholder="$t('trading-assistant.placeholders.inputApiKey')"
+                      @change="handleApiConfigChange" />
+                  </a-form-item>
+
+                  <!-- Zerodha: access_token -->
+                  <template v-if="currentBrokerId === 'zerodha'">
+                    <a-form-item :label="$t('trading-assistant.form.accessToken')">
+                      <a-input-password
+                        v-decorator="['access_token', { rules: [{ required: true }] }]"
+                        @change="handleApiConfigChange" />
+                      <div class="form-item-hint">{{ $t('trading-assistant.form.accessTokenHint') }}</div>
+                    </a-form-item>
+                  </template>
+
+                  <!-- Angel One: client_id + password + totp_key -->
+                  <template v-else-if="currentBrokerId === 'angelone'">
+                    <a-form-item :label="$t('trading-assistant.form.clientId')">
+                      <a-input-password v-decorator="['client_id', { rules: [{ required: true }] }]" @change="handleApiConfigChange" />
+                    </a-form-item>
+                    <a-form-item :label="$t('trading-assistant.form.mt5Password')">
+                      <a-input-password v-decorator="['password', { rules: [{ required: true }] }]" @change="handleApiConfigChange" />
+                    </a-form-item>
+                    <a-form-item :label="$t('trading-assistant.form.totpKey')">
+                      <a-input-password v-decorator="['totp_key', { rules: [{ required: true }] }]" @change="handleApiConfigChange" />
+                    </a-form-item>
+                  </template>
+
+                  <!-- Upstox/Fyers/Dhan/Flattrade: api_secret -->
+                  <template v-else-if="['upstox', 'fyers', 'dhan', 'flattrade'].includes(currentBrokerId)">
+                    <a-form-item :label="$t('trading-assistant.form.apiSecret')">
+                      <a-input-password v-decorator="['secret_key', { rules: [{ required: true }] }]" @change="handleApiConfigChange" />
+                    </a-form-item>
+                  </template>
+
+                  <!-- Kotak: access_token + totp + mpin -->
+                  <template v-else-if="currentBrokerId === 'kotak'">
+                    <a-form-item :label="$t('trading-assistant.form.accessToken')">
+                      <a-input-password v-decorator="['access_token', { rules: [{ required: true }] }]" @change="handleApiConfigChange" />
+                    </a-form-item>
+                    <a-form-item :label="$t('trading-assistant.form.totpKey')">
+                      <a-input-password v-decorator="['totp_key']" @change="handleApiConfigChange" />
+                    </a-form-item>
+                    <a-form-item :label="$t('trading-assistant.form.mpin')">
+                      <a-input-password v-decorator="['mpin']" @change="handleApiConfigChange" />
+                    </a-form-item>
+                  </template>
+
+                  <!-- Shoonya: user_id + password + api_secret + totp -->
+                  <template v-else-if="currentBrokerId === 'shoonya'">
+                    <a-form-item :label="$t('trading-assistant.form.userId')">
+                      <a-input v-decorator="['client_id', { rules: [{ required: true }] }]" @change="handleApiConfigChange" />
+                    </a-form-item>
+                    <a-form-item :label="$t('trading-assistant.form.mt5Password')">
+                      <a-input-password v-decorator="['password', { rules: [{ required: true }] }]" @change="handleApiConfigChange" />
+                    </a-form-item>
+                    <a-form-item :label="$t('trading-assistant.form.apiSecret')">
+                      <a-input-password v-decorator="['secret_key', { rules: [{ required: true }] }]" @change="handleApiConfigChange" />
+                    </a-form-item>
+                    <a-form-item :label="$t('trading-assistant.form.totpCode')">
+                      <a-input-password v-decorator="['totp_key', { rules: [{ required: true }] }]" @change="handleApiConfigChange" />
+                    </a-form-item>
+                  </template>
+                </template>
+
                 <!-- ========== Crypto Exchange Configuration ========== -->
                 <template v-else>
                   <a-form-item :label="$t('trading-assistant.form.savedCredential')">
@@ -1589,6 +1674,18 @@ const FOREX_BROKER_OPTIONS = [
   // { value: 'ctrader', labelKey: 'ctrader', name: 'cTrader' },
 ]
 
+// Indian broker options
+const INDIAN_BROKER_OPTIONS = [
+  { value: 'zerodha', labelKey: 'zerodha', name: 'Zerodha (Kite Connect)' },
+  { value: 'angelone', labelKey: 'angelone', name: 'Angel One (SmartAPI)' },
+  { value: 'upstox', labelKey: 'upstox', name: 'Upstox' },
+  { value: 'fyers', labelKey: 'fyers', name: 'Fyers' },
+  { value: 'dhan', labelKey: 'dhan', name: 'Dhan' },
+  { value: 'kotak', labelKey: 'kotak', name: 'Kotak Neo' },
+  { value: 'shoonya', labelKey: 'shoonya', name: 'Shoonya (Finvasia)' },
+  { value: 'flattrade', labelKey: 'flattrade', name: 'Flattrade' }
+]
+
 export default {
   name: 'TradingAssistant',
   mixins: [baseMixin],
@@ -1626,9 +1723,13 @@ export default {
     isMT5Market () {
       return this.selectedMarketCategory === 'Forex'
     },
+    // Check if current market uses Indian brokers
+    isIndianMarket () {
+      return this.selectedMarketCategory === 'IndianStock'
+    },
     // Check if current market uses any broker (not crypto exchange)
     isBrokerMarket () {
-      return this.isIBKRMarket || this.isMT5Market
+      return this.isIBKRMarket || this.isMT5Market || this.isIndianMarket
     },
     // Pre-process exchange list with display names for performance
     formattedExchangeOptions () {
@@ -1697,6 +1798,10 @@ export default {
       if (cat === 'Forex') {
         return true
       }
+      // IndianStock can use Indian brokers for live trading
+      if (cat === 'IndianStock') {
+        return true
+      }
       return false
     },
     // Check if current market + exchange combination supports live trading
@@ -1714,6 +1819,10 @@ export default {
       // Forex uses MT5
       if (cat === 'Forex') {
         return this.currentBrokerId === 'mt5'
+      }
+      // IndianStock uses Indian brokers
+      if (cat === 'IndianStock') {
+        return ['zerodha', 'angelone', 'upstox', 'fyers', 'dhan', 'kotak', 'shoonya', 'flattrade'].includes(this.currentBrokerId)
       }
       return false
     },
@@ -1745,6 +1854,26 @@ export default {
     // Forex broker options (with i18n support)
     forexBrokerOptions () {
       return FOREX_BROKER_OPTIONS.map(broker => {
+        let label = ''
+        try {
+          const translationKey = `trading-assistant.brokerNames.${broker.labelKey}`
+          const translated = this.$t(translationKey)
+          if (translated !== translationKey) {
+            label = translated
+          }
+        } catch (e) { }
+        if (!label) {
+          label = broker.name || broker.value.toUpperCase()
+        }
+        return {
+          ...broker,
+          displayName: label
+        }
+      })
+    },
+    // Indian broker options (with i18n support)
+    indianBrokerOptions () {
+      return INDIAN_BROKER_OPTIONS.map(broker => {
         let label = ''
         try {
           const translationKey = `trading-assistant.brokerNames.${broker.labelKey}`
@@ -1979,7 +2108,8 @@ export default {
         { value: 'Crypto', i18nKey: 'dashboard.analysis.market.Crypto' },
         { value: 'USStock', i18nKey: 'dashboard.analysis.market.USStock' },
         { value: 'Forex', i18nKey: 'dashboard.analysis.market.Forex' },
-        { value: 'Futures', i18nKey: 'dashboard.analysis.market.Futures' }
+        { value: 'Futures', i18nKey: 'dashboard.analysis.market.Futures' },
+        { value: 'IndianStock', i18nKey: 'dashboard.analysis.market.IndianStock' }
       ],
       addSymbolKeyword: '',
       searchingSymbol: false,
@@ -2306,7 +2436,8 @@ export default {
         USStock: 'green',
         Crypto: 'purple',
         Forex: 'gold',
-        Futures: 'cyan'
+        Futures: 'cyan',
+        IndianStock: 'volcano'
       }
       return colors[market] || 'default'
     },
@@ -2343,11 +2474,16 @@ export default {
         try {
           this.form && this.form.setFieldsValue && this.form.setFieldsValue({ broker_id: 'ibkr' })
         } catch (e) { }
+      } else if (this.selectedMarketCategory === 'IndianStock') {
+        this.currentBrokerId = 'zerodha'
+        try {
+          this.form && this.form.setFieldsValue && this.form.setFieldsValue({ indian_broker_id: 'zerodha' })
+        } catch (e) { }
       }
 
       // Markets without live trading support: force back to signal mode
-      // Crypto, USStock, Forex support live trading; others do not
-      const supportsLiveTrading = ['Crypto', 'USStock', 'Forex'].includes(this.selectedMarketCategory)
+      // Crypto, USStock, Forex, IndianStock support live trading; others do not
+      const supportsLiveTrading = ['Crypto', 'USStock', 'Forex', 'IndianStock'].includes(this.selectedMarketCategory)
       if (!supportsLiveTrading) {
         this.executionModeUi = 'signal'
         try {
@@ -2386,10 +2522,15 @@ export default {
         try {
           this.form && this.form.setFieldsValue && this.form.setFieldsValue({ broker_id: 'ibkr' })
         } catch (e) { }
+      } else if (this.selectedMarketCategory === 'IndianStock') {
+        this.currentBrokerId = 'zerodha'
+        try {
+          this.form && this.form.setFieldsValue && this.form.setFieldsValue({ indian_broker_id: 'zerodha' })
+        } catch (e) { }
       }
 
       // Markets without live trading support: force back to signal mode
-      const supportsLiveTrading = ['Crypto', 'USStock', 'Forex'].includes(this.selectedMarketCategory)
+      const supportsLiveTrading = ['Crypto', 'USStock', 'Forex', 'IndianStock'].includes(this.selectedMarketCategory)
       if (!supportsLiveTrading) {
         this.executionModeUi = 'signal'
         try {
@@ -2754,9 +2895,10 @@ export default {
       if (strategy.exchange_config) {
         const exchangeId = strategy.exchange_config.exchange_id || ''
         const isLive = this.executionModeUi === 'live'
-        const supportsLiveTrading = ['Crypto', 'USStock', 'Forex'].includes(this.selectedMarketCategory)
+        const supportsLiveTrading = ['Crypto', 'USStock', 'Forex', 'IndianStock'].includes(this.selectedMarketCategory)
         const isBrokerMarket = this.selectedMarketCategory === 'USStock'
         const isForexMarket = this.selectedMarketCategory === 'Forex'
+        const isIndianMarket = this.selectedMarketCategory === 'IndianStock'
 
         if (isLive && supportsLiveTrading) {
           if (isBrokerMarket) {
@@ -2779,6 +2921,19 @@ export default {
               mt5_password: strategy.exchange_config.mt5_password || '',
               mt5_terminal_path: strategy.exchange_config.mt5_terminal_path || ''
             })
+          } else if (isIndianMarket) {
+            // Indian broker configuration
+            this.currentBrokerId = exchangeId || 'zerodha'
+            this.form.setFieldsValue({
+              indian_broker_id: exchangeId || 'zerodha',
+              api_key: strategy.exchange_config.api_key || '',
+              access_token: strategy.exchange_config.access_token || '',
+              client_id: strategy.exchange_config.client_id || '',
+              password: strategy.exchange_config.password || '',
+              totp_key: strategy.exchange_config.totp_key || '',
+              secret_key: strategy.exchange_config.secret_key || '',
+              mpin: strategy.exchange_config.mpin || ''
+            })
           } else {
             // Crypto exchange configuration
             this.currentExchangeId = exchangeId
@@ -2800,8 +2955,8 @@ export default {
         }
 
         // Update UI state
-        if (isBrokerMarket || isForexMarket) {
-          this.currentBrokerId = exchangeId || (isForexMarket ? 'mt5' : 'ibkr')
+        if (isBrokerMarket || isForexMarket || isIndianMarket) {
+          this.currentBrokerId = exchangeId || (isIndianMarket ? 'zerodha' : isForexMarket ? 'mt5' : 'ibkr')
         } else {
           this.currentExchangeId = exchangeId
         }
@@ -3360,6 +3515,11 @@ export default {
       if (exchange) {
         return this.getExchangeName(exchange)
       }
+      // Check Indian broker options
+      const indianBroker = INDIAN_BROKER_OPTIONS.find(b => b.value === exchangeId)
+      if (indianBroker) {
+        return indianBroker.name
+      }
       // If not found, return formatted exchange ID
       return exchangeId.charAt(0).toUpperCase() + exchangeId.slice(1)
     },
@@ -3402,7 +3562,16 @@ export default {
         binanceus: 'gold',
         binancecoinm: 'gold',
         binanceusdm: 'gold',
-        ibkr: 'green'
+        ibkr: 'green',
+        mt5: 'geekblue',
+        zerodha: 'orange',
+        angelone: 'red',
+        upstox: 'purple',
+        fyers: 'blue',
+        dhan: 'cyan',
+        kotak: 'volcano',
+        shoonya: 'lime',
+        flattrade: 'magenta'
       }
       return colorMap[exchangeId] || 'default'
     },
@@ -3422,6 +3591,11 @@ export default {
     },
     handleForexBrokerSelectChange (value) {
       this.currentBrokerId = value || 'mt5'
+      this.testResult = null
+      this.connectionTestResult = null
+    },
+    handleIndianBrokerSelectChange (value) {
+      this.currentBrokerId = value || 'zerodha'
       this.testResult = null
       this.connectionTestResult = null
     },
@@ -3613,6 +3787,50 @@ export default {
               message: `${baseError} - ${this.$t('trading-assistant.exchange.checkLocalDeployment')}`
             }
             this.$message.error(this.testResult.message)
+          } finally {
+            this.testing = false
+          }
+          return
+        }
+
+        // Indian brokers: test connection via exchange test API
+        if (this.isIndianMarket) {
+          const brokerId = this.currentBrokerId || 'zerodha'
+          const values = this.form.getFieldsValue(['api_key', 'access_token', 'client_id', 'password', 'totp_key', 'secret_key', 'mpin'])
+
+          if (!values.api_key) {
+            this.testResult = { success: false, message: this.$t('trading-assistant.exchange.fillComplete') }
+            this.$message.error(this.testResult.message)
+            this.testing = false
+            return
+          }
+
+          try {
+            const exchangeConfig = {
+              exchange_id: brokerId,
+              api_key: values.api_key,
+              access_token: values.access_token || '',
+              client_id: values.client_id || '',
+              password: values.password || '',
+              totp_key: values.totp_key || '',
+              secret_key: values.secret_key || '',
+              mpin: values.mpin || ''
+            }
+
+            const res = await testExchangeConnection(exchangeConfig)
+
+            if (res && res.code === 1 && res.data && res.data.success) {
+              this.testResult = { success: true, message: this.$t('trading-assistant.exchange.indianBrokerConnectionSuccess') }
+              this.$message.success(this.testResult.message)
+            } else {
+              const msg = (res && res.data && res.data.message) || this.$t('trading-assistant.exchange.indianBrokerConnectionFailed')
+              this.testResult = { success: false, message: msg }
+              this.$message.error(msg)
+            }
+          } catch (error) {
+            const baseError = error.response?.data?.error || error?.error || error.message || this.$t('trading-assistant.exchange.indianBrokerConnectionFailed')
+            this.testResult = { success: false, message: baseError }
+            this.$message.error(baseError)
           } finally {
             this.testing = false
           }
@@ -3862,6 +4080,16 @@ export default {
                 mt5_login: values.mt5_login || '',
                 mt5_password: values.mt5_password || '',
                 mt5_terminal_path: values.mt5_terminal_path || ''
+              } : this.isIndianMarket ? {
+                // Indian broker configuration
+                exchange_id: values.indian_broker_id || this.currentBrokerId || 'zerodha',
+                api_key: values.api_key || '',
+                access_token: values.access_token || '',
+                client_id: values.client_id || '',
+                password: values.password || '',
+                totp_key: values.totp_key || '',
+                secret_key: values.secret_key || '',
+                mpin: values.mpin || ''
               } : {
                 // Crypto exchange configuration
                 exchange_id: values.exchange_id,
@@ -3962,7 +4190,7 @@ export default {
                 this.$message.success(this.$t('trading-assistant.messages.batchCreateSuccess', { count: totalCreated }))
               }
               // Save credential to vault (crypto exchanges only, IBKR/MT5 don't need this)
-              if (isLive && values.save_credential && !this.isIBKRMarket && !this.isMT5Market) {
+              if (isLive && values.save_credential && !this.isIBKRMarket && !this.isMT5Market && !this.isIndianMarket) {
                 try {
                   await createExchangeCredential({
                     user_id: 1,

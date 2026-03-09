@@ -1854,7 +1854,8 @@ export default {
         'USStock': 'dashboard.indicator.market.USStock',
         'Crypto': 'dashboard.indicator.market.Crypto',
         'Forex': 'dashboard.indicator.market.Forex',
-        'Futures': 'dashboard.indicator.market.Futures'
+        'Futures': 'dashboard.indicator.market.Futures',
+        'IndianStock': 'dashboard.indicator.market.IndianStock'
       }
       const key = marketMap[market]
       return key && proxy?.$t ? proxy.$t(key) : market
@@ -1866,7 +1867,8 @@ export default {
         'USStock': 'green',
         'Crypto': 'purple',
         'Forex': 'gold',
-        'Futures': 'cyan'
+        'Futures': 'cyan',
+        'IndianStock': 'volcano'
       }
       return colors[market] || 'default'
     }

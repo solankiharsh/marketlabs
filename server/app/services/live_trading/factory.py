@@ -5,7 +5,7 @@ Supports:
 - Crypto exchanges: Binance, OKX, Bitget, Bybit, Coinbase, Kraken, KuCoin, Gate, Bitfinex
 - Traditional brokers: Interactive Brokers (IBKR) for US stocks
 - Forex brokers: MetaTrader 5 (MT5)
-- Indian brokers: Zerodha (Kite Connect), Angel One (SmartAPI)
+- Indian brokers: Zerodha, Angel One, Upstox, Fyers, Dhan, Kotak Neo, Shoonya, Flattrade
 """
 
 from __future__ import annotations
@@ -38,6 +38,12 @@ MT5Config = None
 # Lazy import Indian broker clients
 ZerodhaClient = None
 AngelOneClient = None
+UpstoxClient = None
+FyersClient = None
+DhanClient = None
+KotakClient = None
+ShoonyaClient = None
+FlattradeClient = None
 
 
 def _get(cfg: Dict[str, Any], *keys: str) -> str:
@@ -148,11 +154,23 @@ def create_client(exchange_config: Dict[str, Any], *, market_type: str = "swap")
         # This factory only creates clients based on exchange_id
         return create_mt5_client(exchange_config)
 
-    # Indian brokers (Zerodha, Angel One)
+    # Indian brokers
     if exchange_id == "zerodha":
         return create_zerodha_client(exchange_config)
     if exchange_id == "angelone":
         return create_angelone_client(exchange_config)
+    if exchange_id == "upstox":
+        return create_indian_broker_client("upstox", exchange_config)
+    if exchange_id == "fyers":
+        return create_indian_broker_client("fyers", exchange_config)
+    if exchange_id == "dhan":
+        return create_indian_broker_client("dhan", exchange_config)
+    if exchange_id == "kotak":
+        return create_indian_broker_client("kotak", exchange_config)
+    if exchange_id == "shoonya":
+        return create_indian_broker_client("shoonya", exchange_config)
+    if exchange_id == "flattrade":
+        return create_indian_broker_client("flattrade", exchange_config)
 
     raise LiveTradingError(f"Unsupported exchange_id: {exchange_id}")
 
@@ -319,3 +337,86 @@ def create_angelone_client(exchange_config: Dict[str, Any]):
     return client
 
 
+def create_indian_broker_client(broker_id: str, exchange_config: Dict[str, Any]):
+    """
+    Create client for newer Indian brokers (Upstox, Fyers, Dhan, Kotak, Shoonya, Flattrade).
+
+    These are connection-test stubs — full order execution will be added later.
+    """
+    global UpstoxClient, FyersClient, DhanClient, KotakClient, ShoonyaClient, FlattradeClient
+
+    api_key = _get(exchange_config, "api_key", "apiKey")
+    secret_key = _get(exchange_config, "secret_key", "secretKey")
+    access_token = _get(exchange_config, "access_token", "accessToken")
+    client_id = _get(exchange_config, "client_id", "clientId")
+    password = _get(exchange_config, "password")
+    totp_key = _get(exchange_config, "totp_key", "totpKey")
+    mpin = _get(exchange_config, "mpin")
+
+    if broker_id == "upstox":
+        if UpstoxClient is None:
+            try:
+                from app.services.live_trading.upstox import UpstoxClient as _C
+                UpstoxClient = _C
+            except ImportError:
+                raise LiveTradingError("Upstox client import failed")
+        if not api_key or not secret_key:
+            raise LiveTradingError("Upstox requires api_key and secret_key")
+        return UpstoxClient(api_key=api_key, secret_key=secret_key)
+
+    if broker_id == "fyers":
+        if FyersClient is None:
+            try:
+                from app.services.live_trading.fyers import FyersClient as _C
+                FyersClient = _C
+            except ImportError:
+                raise LiveTradingError("Fyers client import failed")
+        if not api_key or not secret_key:
+            raise LiveTradingError("Fyers requires api_key and secret_key")
+        return FyersClient(api_key=api_key, secret_key=secret_key)
+
+    if broker_id == "dhan":
+        if DhanClient is None:
+            try:
+                from app.services.live_trading.dhan import DhanClient as _C
+                DhanClient = _C
+            except ImportError:
+                raise LiveTradingError("Dhan client import failed")
+        if not api_key or not secret_key:
+            raise LiveTradingError("Dhan requires api_key and secret_key")
+        return DhanClient(api_key=api_key, secret_key=secret_key)
+
+    if broker_id == "kotak":
+        if KotakClient is None:
+            try:
+                from app.services.live_trading.kotak import KotakClient as _C
+                KotakClient = _C
+            except ImportError:
+                raise LiveTradingError("Kotak client import failed")
+        if not api_key or not access_token:
+            raise LiveTradingError("Kotak Neo requires api_key and access_token")
+        return KotakClient(api_key=api_key, access_token=access_token, totp_key=totp_key, mpin=mpin)
+
+    if broker_id == "shoonya":
+        if ShoonyaClient is None:
+            try:
+                from app.services.live_trading.shoonya import ShoonyaClient as _C
+                ShoonyaClient = _C
+            except ImportError:
+                raise LiveTradingError("Shoonya client import failed")
+        if not api_key or not client_id or not password:
+            raise LiveTradingError("Shoonya requires api_key, client_id, and password")
+        return ShoonyaClient(api_key=api_key, client_id=client_id, password=password, secret_key=secret_key, totp_key=totp_key)
+
+    if broker_id == "flattrade":
+        if FlattradeClient is None:
+            try:
+                from app.services.live_trading.flattrade import FlattradeClient as _C
+                FlattradeClient = _C
+            except ImportError:
+                raise LiveTradingError("Flattrade client import failed")
+        if not api_key or not secret_key:
+            raise LiveTradingError("Flattrade requires api_key and secret_key")
+        return FlattradeClient(api_key=api_key, secret_key=secret_key)
+
+    raise LiveTradingError(f"Unsupported Indian broker: {broker_id}")

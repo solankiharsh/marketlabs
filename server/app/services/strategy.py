@@ -285,6 +285,12 @@ class StrategyService:
                 from app.services.live_trading.deepcoin import DeepcoinClient
                 from app.services.live_trading.zerodha import ZerodhaClient
                 from app.services.live_trading.angelone import AngelOneClient
+                from app.services.live_trading.upstox import UpstoxClient
+                from app.services.live_trading.fyers import FyersClient
+                from app.services.live_trading.dhan import DhanClient
+                from app.services.live_trading.kotak import KotakClient
+                from app.services.live_trading.shoonya import ShoonyaClient
+                from app.services.live_trading.flattrade import FlattradeClient
 
                 resolved = resolve_exchange_config(exchange_config or {})
                 safe_cfg = safe_exchange_config_for_log(resolved)
@@ -359,6 +365,10 @@ class StrategyService:
                         priv_data = client.get_profile()
                     elif isinstance(client, AngelOneClient):
                         client.login()
+                        priv_data = client.get_profile()
+                    elif isinstance(client, (UpstoxClient, FyersClient, DhanClient, KotakClient)):
+                        priv_data = client.get_profile()
+                    elif isinstance(client, (ShoonyaClient, FlattradeClient)):
                         priv_data = client.get_profile()
                 except Exception as e:
                     msg = str(e)
