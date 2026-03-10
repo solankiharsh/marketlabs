@@ -1,8 +1,8 @@
 @import '~ant-design-vue/es/style/themes/default.less';
 
-/* ========== 完全隐藏 ant-layout-footer ========== */
+/* ========== Completely hide ant-layout-footer ========== */
 :global {
-  /* 全局隐藏所有 ant-layout-footer */
+  /* Globally hide all ant-layout-footer */
   .ant-layout-footer,
   footer.ant-layout-footer,
   .ant-pro-layout .ant-layout-footer,
@@ -18,10 +18,10 @@
   }
 }
 
-/* ========== ant-layout-header 主题适配 ========== */
-/* 全局样式：根据 body 或 layout 的主题类自动适配 */
+/* ========== ant-layout-header theme adaptation ========== */
+/* Global styles: auto-adapt based on body or layout theme class */
 :global {
-  /* 暗黑主题下的 ant-layout-header */
+  /* Dark theme ant-layout-header */
   body.dark .ant-layout-header,
   body.realdark .ant-layout-header,
   .ant-layout.dark .ant-layout-header,
@@ -33,12 +33,12 @@
     box-shadow: 0 1px 4px rgba(0, 21, 41, 0.08) !important;
     color: rgba(255, 255, 255, 0.85) !important;
 
-    /* Header 内的所有文字和图标 */
+    /* All text and icons inside header */
     * {
       color: rgba(255, 255, 255, 0.85) !important;
     }
 
-    /* Header 内的图标按钮 */
+    /* Icon buttons inside header */
     .anticon {
       color: rgba(255, 255, 255, 0.85) !important;
 
@@ -49,7 +49,7 @@
       }
     }
 
-    /* Header 内的链接 */
+    /* Links inside header */
     a {
       color: rgba(255, 255, 255, 0.85) !important;
 
@@ -58,7 +58,7 @@
       }
     }
 
-    /* Header 内的工具提示容器 */
+    /* Tooltip container inside header */
     .ant-tooltip-open {
       .anticon {
         color: rgba(255, 255, 255, 0.85) !important;
@@ -67,7 +67,7 @@
   }
 
 
-  /* 浅色主题下的 ant-layout-header（确保覆盖默认样式） */
+  /* Light theme ant-layout-header (ensure default style override) */
   body.light .ant-layout-header,
   .ant-layout.light .ant-layout-header,
   .ant-pro-layout.light .ant-layout-header {
@@ -77,8 +77,8 @@
     color: rgba(0, 0, 0, 0.85) !important;
   }
 
-  /* ========== ant-layout-content 主题适配（中间页面内容区域） ========== */
-  /* 暗黑主题下的内容区域 */
+  /* ========== ant-layout-content theme adaptation (main content area) ========== */
+  /* Dark theme content area */
   body.dark .ant-layout-content,
   body.realdark .ant-layout-content,
   .ant-layout.dark .ant-layout-content,
@@ -91,7 +91,7 @@
 
 
 
-  /* 浅色主题下的内容区域 */
+  /* Light theme content area */
   body.light .ant-layout-content,
   .ant-layout.light .ant-layout-content,
   .ant-pro-layout.light .ant-layout-content {
@@ -103,8 +103,8 @@
 
 
 
-  /* ========== GlobalHeader 核心样式（基于 .ant-pro-global-header） ========== */
-  /* 暗黑主题下的 .ant-pro-global-header - 这是控制顶部标题栏的关键样式 */
+  /* ========== GlobalHeader core styles (based on .ant-pro-global-header) ========== */
+  /* Dark theme .ant-pro-global-header - key styles controlling the top header bar */
   body.dark .ant-pro-global-header,
   body.realdark .ant-pro-global-header,
   .ant-layout.dark .ant-pro-global-header,
@@ -115,18 +115,18 @@
   body.realdark .ant-layout-header .ant-pro-global-header,
   .ant-pro-layout.dark .ant-layout-header .ant-pro-global-header,
   .ant-pro-layout.realdark .ant-layout-header .ant-pro-global-header {
-    /* 核心：背景色和边框 */
+    /* Core: background color and border */
     background: #001529 !important;
     border-bottom: 1px solid #1f1f1f !important;
     box-shadow: 0 1px 4px rgba(0, 21, 41, 0.08) !important;
     color: rgba(255, 255, 255, 0.85) !important;
 
-    /* 强制所有子元素文字颜色 */
+    /* Force all child element text color */
     * {
       color: rgba(255, 255, 255, 0.85) !important;
     }
 
-    /* Logo 区域 */
+    /* Logo area */
     .ant-pro-global-header-logo {
       background: transparent !important;
       color: rgba(255, 255, 255, 0.85) !important;
@@ -145,7 +145,7 @@
     }
   }
 
-  /* Header 内容区域（中间部分，包含刷新按钮等） */
+  /* Header content area (middle section, contains refresh button etc.) */
   .ant-pro-global-header-content {
     background: transparent !important;
     color: rgba(255, 255, 255, 0.85) !important;
@@ -154,7 +154,7 @@
       color: rgba(255, 255, 255, 0.85) !important;
     }
 
-    /* 刷新按钮等图标 */
+    /* Refresh button and other icons */
     .anticon {
       color: rgba(255, 255, 255, 0.85) !important;
 
@@ -165,13 +165,13 @@
       }
     }
 
-    /* 工具提示内的图标 */
+    /* Icons inside tooltips */
     .ant-tooltip-open .anticon {
       color: rgba(255, 255, 255, 0.85) !important;
     }
   }
 
-  /* Header 右侧内容区域（包含头像、语言选择、设置按钮） */
+  /* Header right content area (avatar, language selector, settings button) */
   .ant-pro-global-header-index-right {
     background: transparent !important;
     color: rgba(255, 255, 255, 0.85) !important;
@@ -180,7 +180,7 @@
       color: rgba(255, 255, 255, 0.85) !important;
     }
 
-    /* 操作按钮（头像、语言、设置） */
+    /* Action buttons (avatar, language, settings) */
     .ant-pro-global-header-index-action {
       color: rgba(255, 255, 255, 0.85) !important;
 
@@ -194,7 +194,7 @@
       }
     }
 
-    /* 头像区域 */
+    /* Avatar area */
     .ant-pro-account-avatar {
       color: rgba(255, 255, 255, 0.85) !important;
 
@@ -207,7 +207,7 @@
       }
     }
 
-    /* 下拉菜单触发器 */
+    /* Dropdown menu trigger */
     .ant-pro-drop-down,
     .ant-dropdown-trigger {
       color: rgba(255, 255, 255, 0.85) !important;
@@ -223,7 +223,7 @@
     }
   }
 
-  /* 链接样式 */
+  /* Link styles */
   a {
     color: rgba(255, 255, 255, 0.85) !important;
 
@@ -232,7 +232,7 @@
     }
   }
 
-  /* 所有图标 */
+  /* All icons */
   .anticon {
     color: rgba(255, 255, 255, 0.85) !important;
 
@@ -241,7 +241,7 @@
     }
   }
 
-  /* 浅色主题下的 .ant-pro-global-header */
+  /* Light theme .ant-pro-global-header */
   body.light .ant-pro-global-header,
   .ant-layout.light .ant-pro-global-header,
   .ant-pro-layout.light .ant-pro-global-header,
@@ -253,17 +253,17 @@
   }
 }
 
-/* ========== 全局布局主题适配 - 强化覆盖 ========== */
+/* ========== Global layout theme adaptation - enhanced overrides ========== */
 :global(.ant-pro-layout) {
-  /* 暗黑主题下的完整布局 */
+  /* Dark theme full layout */
   &.dark,
   &.realdark {
-    /* 0. 基础 Layout 背景 - 确保整体背景变暗 */
+    /* 0. Base layout background - ensure overall dark background */
     :global(.ant-layout) {
       background-color: #001529 !important;
     }
 
-    /* 1. 顶部 Header */
+    /* 1. Top header */
     :global(.ant-layout-header) {
       background: #001529 !important;
       border-bottom: 1px solid #1f1f1f !important;
@@ -280,7 +280,7 @@
       }
     }
 
-    /* 2. 中间内容区域 */
+    /* 2. Main content area */
     :global(.ant-layout-content) {
       background: #141414 !important;
       color: rgba(255, 255, 255, 0.85) !important;
@@ -293,21 +293,21 @@
 
   }
 
-  /* 浅色主题下的完整布局 */
+  /* Light theme full layout */
   &.light {
-    /* 0. 基础 Layout 背景 */
+    /* 0. Base layout background */
     :global(.ant-layout) {
       background-color: #f0f2f5 !important;
     }
 
-    /* 1. 顶部 Header */
+    /* 1. Top header */
     :global(.ant-layout-header) {
       background: #fff !important;
       border-bottom: 1px solid #e8e8e8 !important;
       color: rgba(0, 0, 0, 0.85) !important;
     }
 
-    /* 2. 中间内容区域 */
+    /* 2. Main content area */
     :global(.ant-layout-content) {
       background: #f0f2f5 !important;
       color: rgba(0, 0, 0, 0.85) !important;
@@ -333,7 +333,7 @@
       }
     }
 
-    /* 暗黑主题下的头像下拉菜单 */
+    /* Dark theme avatar dropdown menu */
     .ant-pro-account-avatar {
       color: rgba(255, 255, 255, 0.85);
 
@@ -346,7 +346,7 @@
       }
     }
 
-    /* 语言选择器和设置按钮 */
+    /* Language selector and settings button */
     .ant-pro-drop-down {
       color: rgba(255, 255, 255, 0.85);
 
@@ -357,7 +357,7 @@
     }
   }
 
-  /* 浅色主题下的头像样式 */
+  /* Light theme avatar styles */
   .ant-pro-account-avatar {
     .antd-pro-global-header-index-avatar {
       margin: ~'calc((@{layout-header-height} - 24px) / 2)' 0;
@@ -379,7 +379,7 @@
   }
 }
 
-/* 暗黑主题下的下拉菜单样式 */
+/* Dark theme dropdown menu styles */
 :global {
   .ant-pro-layout.dark,
   .ant-pro-layout.realdark {
@@ -404,10 +404,10 @@
   }
 }
 
-/* 手机端适配 */
+/* Mobile responsive */
 @media (max-width: 768px) {
   :global {
-    /* 使用更具体的选择器强制覆盖 */
+    /* Use more specific selectors to force override */
     .ant-layout-header .ant-pro-global-header .ant-pro-global-header-logo,
     .ant-pro-layout .ant-layout-header .ant-pro-global-header .ant-pro-global-header-logo,
     body .ant-layout-header .ant-pro-global-header .ant-pro-global-header-logo,
@@ -420,4 +420,3 @@
     }
   }
 }
-

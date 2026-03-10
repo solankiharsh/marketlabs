@@ -3,7 +3,7 @@ const IS_PREVIEW = process.env.VUE_APP_PREVIEW === 'true'
 
 const plugins = []
 if (IS_PROD && !IS_PREVIEW) {
-  // 去除日志的插件，
+  // Remove console logs in production
   plugins.push('transform-remove-console')
 }
 
@@ -12,7 +12,7 @@ if (IS_PROD && !IS_PREVIEW) {
 plugins.push(['import', {
   'libraryName': 'ant-design-vue',
   'libraryDirectory': 'es',
-  'style': true // `style: true` 会加载 less 文件
+  'style': true // `style: true` loads less files
 }])
 
 module.exports = {

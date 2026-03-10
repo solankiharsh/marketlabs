@@ -28,7 +28,7 @@
         max-width: 600px;
       }
       
-      /* 像素风格小猫奔跑动画容器 */
+      /* Pixel-style running cat animation container */
       .pixel-cat-container {
         position: relative;
         width: 100%;
@@ -37,7 +37,7 @@
         overflow: hidden;
       }
       
-      /* 像素小猫主体 */
+      /* Pixel cat body */
       .pixel-cat {
         position: absolute;
         left: 0;
@@ -50,14 +50,14 @@
         image-rendering: crisp-edges;
       }
       
-      /* 所有像素元素都使用锐利边缘 */
+      /* All pixel elements use crisp edges */
       .pixel-cat * {
         image-rendering: pixelated;
         image-rendering: -moz-crisp-edges;
         image-rendering: crisp-edges;
       }
       
-      /* 猫头 - 像素方块组成 */
+      /* Cat head - composed of pixel blocks */
       .cat-head {
         position: absolute;
         left: 2px;
@@ -65,16 +65,16 @@
         width: 16px;
         height: 14px;
         background: 
-          /* 头部主体白色 */
+          /* Head body - white */
           linear-gradient(#fff, #fff) 2px 4px / 12px 10px no-repeat,
-          /* 左半脸黑色斑块 */
+          /* Left half face - black patch */
           linear-gradient(#000, #000) 2px 4px / 6px 10px no-repeat,
-          /* 头顶 */
+          /* Top of head */
           linear-gradient(#fff, #fff) 4px 2px / 8px 2px no-repeat;
         animation: headBob 0.4s steps(2) infinite;
       }
       
-      /* 左耳 - 黑色尖耳朵 */
+      /* Left ear - black pointed ear */
       .cat-ear-left {
         position: absolute;
         left: 0px;
@@ -87,7 +87,7 @@
           linear-gradient(#000, #000) 1px 0px / 2px 2px no-repeat;
       }
       
-      /* 右耳 - 白色尖耳朵 */
+      /* Right ear - white pointed ear */
       .cat-ear-right {
         position: absolute;
         right: 0px;
@@ -111,7 +111,7 @@
         box-sizing: border-box;
       }
       
-      /* 左眼 - 黑底白眼（在黑色区域） */
+      /* Left eye - white on black background */
       .cat-eye-left {
         position: absolute;
         left: 4px;
@@ -131,7 +131,7 @@
         background: #000;
       }
       
-      /* 右眼 - 白底黑眼（在白色区域） */
+      /* Right eye - black on white background */
       .cat-eye-right {
         position: absolute;
         right: 2px;
@@ -153,7 +153,7 @@
         background: #000;
       }
       
-      /* 鼻子 - 小粉色方块 */
+      /* Nose - small pixel block */
       .cat-nose {
         position: absolute;
         left: 7px;
@@ -163,7 +163,7 @@
         background: #000;
       }
       
-      /* 胡须 - 像素线条 */
+      /* Whiskers - pixel lines */
       .cat-whiskers {
         position: absolute;
         left: 0;
@@ -194,7 +194,7 @@
         box-shadow: 0 2px 0 #000;
       }
       
-      /* 身体 - 黑白相间像素块 */
+      /* Body - black and white pixel blocks */
       .cat-body {
         position: absolute;
         left: 4px;
@@ -202,15 +202,15 @@
         width: 14px;
         height: 10px;
         background: 
-          /* 白色部分 */
+          /* White section */
           linear-gradient(#fff, #fff) 6px 0 / 8px 10px no-repeat,
-          /* 黑色部分 */
+          /* Black section */
           linear-gradient(#000, #000) 0 0 / 8px 10px no-repeat;
         border: 1px solid #000;
         box-sizing: border-box;
       }
       
-      /* 前腿 - 左 (黑色) */
+      /* Front leg - left (black) */
       .cat-leg-front-left {
         position: absolute;
         left: 6px;
@@ -221,7 +221,7 @@
         animation: legFront 0.2s steps(2) infinite;
       }
       
-      /* 前腿 - 右 (白色带边框) */
+      /* Front leg - right (white with border) */
       .cat-leg-front-right {
         position: absolute;
         left: 12px;
@@ -234,7 +234,7 @@
         animation: legFront 0.2s steps(2) infinite 0.1s;
       }
       
-      /* 后腿 - 左 (白色带边框) */
+      /* Back leg - left (white with border) */
       .cat-leg-back-left {
         position: absolute;
         left: 3px;
@@ -247,7 +247,7 @@
         animation: legBack 0.2s steps(2) infinite 0.1s;
       }
       
-      /* 后腿 - 右 (黑色) */
+      /* Back leg - right (black) */
       .cat-leg-back-right {
         position: absolute;
         left: 15px;
@@ -258,7 +258,7 @@
         animation: legBack 0.2s steps(2) infinite;
       }
       
-      /* 尾巴 - 长且弯曲的像素尾巴 */
+      /* Tail - long curved pixel tail */
       .cat-tail {
         position: absolute;
         right: -10px;
@@ -266,55 +266,55 @@
         width: 12px;
         height: 10px;
         background: 
-          /* 尾巴根部 */
+          /* Tail base */
           linear-gradient(#000, #000) 0 6px / 3px 3px no-repeat,
-          /* 尾巴中部 */
+          /* Tail middle */
           linear-gradient(#000, #000) 3px 4px / 3px 3px no-repeat,
-          /* 尾巴弯曲 */
+          /* Tail curve */
           linear-gradient(#000, #000) 6px 2px / 3px 3px no-repeat,
-          /* 尾巴尖端 */
+          /* Tail tip */
           linear-gradient(#000, #000) 9px 0 / 3px 3px no-repeat;
         animation: tailWag 0.3s steps(2) infinite alternate;
         transform-origin: left bottom;
       }
       
-      /* 奔跑动画 - 轻微上下跳动 */
+      /* Running animation - slight vertical bounce */
       @keyframes catRun {
         0%, 100% { transform: translateY(0); }
         50% { transform: translateY(-3px); }
       }
       
-      /* 移动动画 - 左右移动 */
+      /* Movement animation - horizontal traversal */
       @keyframes catMove {
         0% { left: -40px; }
         100% { left: calc(100% + 40px); }
       }
       
-      /* 前腿动画 */
+      /* Front legs animation */
       @keyframes legFront {
         0%, 100% { transform: rotate(-15deg); }
         50% { transform: rotate(15deg); }
       }
       
-      /* 后腿动画 */
+      /* Back legs animation */
       @keyframes legBack {
         0%, 100% { transform: rotate(15deg); }
         50% { transform: rotate(-15deg); }
       }
       
-      /* 尾巴摆动 */
+      /* Tail wag */
       @keyframes tailWag {
         0% { transform: rotate(-10deg); }
         100% { transform: rotate(10deg); }
       }
       
-      /* 头部轻微摆动 */
+      /* Head bob */
       @keyframes headBob {
         0%, 100% { transform: translateY(0); }
         50% { transform: translateY(-1px); }
       }
       
-      /* 地面效果 - 像素风格 */
+      /* Ground effect - pixel style */
       .ground {
         position: absolute;
         bottom: 0;
@@ -337,7 +337,7 @@
         100% { background-position: 12px 0; }
       }
       
-      /* 品牌文字 */
+      /* Brand text */
       .brand-text {
         display: flex;
         justify-content: center;
@@ -349,7 +349,7 @@
         letter-spacing: 2px;
       }
       
-      /* 暗色主题适配 */
+      /* Dark theme adaptation */
       @media (prefers-color-scheme: dark) {
         .first-loading-wrp {
           background: #141414;
@@ -373,7 +373,7 @@
           );
         }
         
-        /* 暗色模式下白色部分改成浅灰 */
+        /* In dark mode, change white parts to light gray */
         .cat-head {
           background: 
             linear-gradient(#ddd, #ddd) 2px 4px / 12px 10px no-repeat,
@@ -398,7 +398,7 @@
         }
       }
       
-      /* 确保像素风格在所有浏览器中正确显示 */
+      /* Ensure pixel style renders correctly in all browsers */
       .pixel-cat,
       .pixel-cat * {
         image-rendering: -moz-crisp-edges;
@@ -407,7 +407,7 @@
         image-rendering: crisp-edges;
       }
       
-      /* 手机端适配 */
+      /* Mobile responsive */
       @media (max-width: 768px) {
         .pixel-cat-container {
           transform: scale(1.5);
@@ -421,4 +421,4 @@
         .brand-text {
           font-size: 20px;
         }
-      }</style><script defer="defer" src="/js/chunk-vendors.a215cf89.js" type="module"></script><script defer="defer" src="/js/app.62ad3140.js" type="module"></script><link href="/css/chunk-vendors.2bf13f0f.css" rel="stylesheet"><link href="/css/app.baf31ae5.css" rel="stylesheet"><script defer="defer" src="/js/chunk-vendors-legacy.4988d933.js" nomodule></script><script defer="defer" src="/js/app-legacy.b9b10844.js" nomodule></script></head><body><noscript><strong>We're sorry but vue-antd-pro doesn't work properly without JavaScript enabled. Please enable it to continue.</strong></noscript><div id="app"><div class="first-loading-wrp"><h2>Landing</h2><div class="loading-wrp"><div class="pixel-cat-container"><div class="ground"></div><div class="pixel-cat"><div class="cat-head"><div class="cat-ear-left"></div><div class="cat-ear-right"></div><div class="cat-eye-left"></div><div class="cat-eye-right"></div><div class="cat-nose"></div><div class="cat-whiskers"></div></div><div class="cat-body"></div><div class="cat-leg-front-left"></div><div class="cat-leg-front-right"></div><div class="cat-leg-back-left"></div><div class="cat-leg-back-right"></div><div class="cat-tail"></div></div></div></div><div class="brand-text">MarketLabs</div></div></div></body></html>
+      }</style><script defer="defer" src="/js/chunk-vendors.272a2265.js" type="module"></script><script defer="defer" src="/js/app.1de1b378.js" type="module"></script><link href="/css/chunk-vendors.2bf13f0f.css" rel="stylesheet"><link href="/css/app.5771f083.css" rel="stylesheet"><script defer="defer" src="/js/chunk-vendors-legacy.746ed69c.js" nomodule></script><script defer="defer" src="/js/app-legacy.7b95de82.js" nomodule></script></head><body><noscript><strong>We're sorry but vue-antd-pro doesn't work properly without JavaScript enabled. Please enable it to continue.</strong></noscript><div id="app"><div class="first-loading-wrp"><h2>Landing</h2><div class="loading-wrp"><div class="pixel-cat-container"><div class="ground"></div><div class="pixel-cat"><div class="cat-head"><div class="cat-ear-left"></div><div class="cat-ear-right"></div><div class="cat-eye-left"></div><div class="cat-eye-right"></div><div class="cat-nose"></div><div class="cat-whiskers"></div></div><div class="cat-body"></div><div class="cat-leg-front-left"></div><div class="cat-leg-front-right"></div><div class="cat-leg-back-left"></div><div class="cat-leg-back-right"></div><div class="cat-tail"></div></div></div></div><div class="brand-text">MarketLabs</div></div></div></body></html>

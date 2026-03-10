@@ -70,9 +70,9 @@ export default {
             <a-dropdown>
               <a class="btn"><a-icon type="ellipsis" /></a>
               <a-menu slot="overlay">
-                <a-menu-item key="1">新增</a-menu-item>
-                <a-menu-item key="2">合并</a-menu-item>
-                <a-menu-item key="3">移除</a-menu-item>
+                <a-menu-item key="1">Add</a-menu-item>
+                <a-menu-item key="2">Merge</a-menu-item>
+                <a-menu-item key="3">Remove</a-menu-item>
               </a-menu>
             </a-dropdown>
           </template>

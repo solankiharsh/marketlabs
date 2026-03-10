@@ -200,7 +200,7 @@
                       <a-tag color="green">{{ $t('dashboard.analysis.score.confidence') }}: {{ analysisResults.debate.bull.confidence }}%</a-tag>
                     </div>
                     <div class="key-points" v-if="analysisResults.debate.bull.key_points && analysisResults.debate.bull.key_points.length">
-                      <h4>{{ $t('dashboard.analysis.label.keyPoints') }}：</h4>
+                      <h4>{{ $t('dashboard.analysis.label.keyPoints') }}:</h4>
                       <ul>
                         <li v-for="(point, idx) in analysisResults.debate.bull.key_points" :key="idx">{{ point }}</li>
                       </ul>
@@ -220,7 +220,7 @@
                       <a-tag color="red">{{ $t('dashboard.analysis.score.confidence') }}: {{ analysisResults.debate.bear.confidence }}%</a-tag>
                     </div>
                     <div class="key-points" v-if="analysisResults.debate.bear.key_points && analysisResults.debate.bear.key_points.length">
-                      <h4>{{ $t('dashboard.analysis.label.keyPoints') }}：</h4>
+                      <h4>{{ $t('dashboard.analysis.label.keyPoints') }}:</h4>
                       <ul>
                         <li v-for="(point, idx) in analysisResults.debate.bear.key_points" :key="idx">{{ point }}</li>
                       </ul>
@@ -309,7 +309,7 @@
                     </div>
                     <div class="analysis-report" v-html="formatReport(analysisResults.final_decision.reasoning)"></div>
                     <div style="margin-top: 16px; padding: 12px; background: var(--summary-bg, var(--panel-bg)); border: 1px solid var(--border-color); border-radius: 4px; color: var(--text-color);">
-                      <strong>{{ $t('dashboard.analysis.label.riskWarning') }}：</strong> {{ analysisResults.final_decision.recommendation }}
+                      <strong>{{ $t('dashboard.analysis.label.riskWarning') }}:</strong> {{ analysisResults.final_decision.recommendation }}
                     </div>
                   </div>
                 </a-card>

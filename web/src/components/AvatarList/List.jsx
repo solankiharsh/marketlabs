@@ -6,7 +6,7 @@ import Item from './Item.jsx'
 import { filterEmpty } from '@/components/_util/util'
 
 /**
- * size: `number`、 `large`、`small`、`default` 默认值: default
+ * size: `number`, `large`, `small`, `default` - default value: default
  * maxLength: number
  * excessItemsStyle: CSSProperties
  */

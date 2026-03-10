@@ -83,7 +83,7 @@ export default {
       height: 32px;
       line-height: 32px;
       &::after {
-        content: '：';
+        content: ':';
       }
     }
   }
